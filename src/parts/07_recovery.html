@@ -1,0 +1,285 @@
+<!-- ============================================================ 11 -->
+<h2 id="s11"><span class="num">11</span>Database Recovery</h2>
+<p>A computer system, like any device, can fail. When it does, information may be lost. The <b>recovery system</b> (recovery
+manager) is the part of the DBMS that restores the database to a <b>consistent state</b> after a failure. It is responsible for
+<b>Atomicity</b> (undo the effects of failed / incomplete transactions) and <b>Durability</b> (make sure the effects of
+committed transactions are never lost).</p>
+<p>Every recovery scheme has two parts:</p>
+<ol><li>Actions taken <b>during normal processing</b> to keep enough information for recovery (writing the log, taking
+checkpoints, backups).</li>
+<li>Actions taken <b>after a failure</b> to restore the database (undo / redo).</li></ol>
+
+<h3 id="s11-1">11.1 Classification of failures</h3>
+<div class="tbl-wrap"><table class="tbl small">
+<tr><th>Failure type</th><th>Examples</th><th>What is lost</th><th>How we recover</th></tr>
+<tr><td><b>Transaction failure</b><br>(a) logical error<br>(b) system error</td>
+<td>(a) bad input, data not found, overflow, insufficient balance, division by zero<br>(b) the DBMS aborts the transaction, e.g. it is chosen as a deadlock victim</td>
+<td>Only that transaction’s work</td><td>Roll back the transaction using the log (undo); maybe restart it</td></tr>
+<tr><td><b>System crash</b></td><td>Power failure, OS/DBMS bug, hardware fault</td>
+<td>Contents of <b>volatile</b> storage (main memory, buffers); disk contents survive (<i>fail-stop</i> assumption)</td>
+<td>Use the log: undo incomplete transactions, redo committed ones</td></tr>
+<tr><td><b>Disk (media) failure</b></td><td>Head crash, bad sectors, failure during a block transfer</td>
+<td>Part or all of the <b>disk</b></td><td>Restore from the last backup (archival dump) and redo from the log</td></tr>
+<tr><td><b>Catastrophe</b> <span class="beyond-tag">Elmasri</span></td><td>Fire, flood, theft</td><td>Whole site</td><td>Remote backup copies</td></tr>
+</table></div>
+
+<h3 id="s11-2">11.2 Storage types</h3>
+{{svg:storage}}
+<p><b>Stable storage</b> is an abstraction: in practice it is built by keeping copies on several non-volatile devices with
+independent failure modes (RAID mirroring, remote copies) and writing them carefully: write copy 1, and only after it
+succeeds write copy 2.</p>
+
+<h3 id="s11-3">11.3 Why recovery needs both UNDO and REDO</h3>
+<p>Recall (Section 1) that <code>write(X)</code> changes only the buffer; the buffer manager writes blocks to disk
+(<code>output</code>) when it likes. At the moment of a crash:</p>
+<ul><li>an <b>uncommitted</b> transaction may already have some of its changes <b>on disk</b> → they must be <b>UNDONE</b>;</li>
+<li>a <b>committed</b> transaction may still have some changes <b>only in memory</b> (lost) → they must be <b>REDONE</b>.</li></ul>
+<div class="box beyond"><div class="box-t">Buffer policies: steal / force</div>
+<div class="tbl-wrap"><table class="tbl small">
+<tr><th>Policy</th><th>Meaning</th><th>Consequence</th></tr>
+<tr><td><b>Steal</b></td><td>a block modified by an <i>uncommitted</i> transaction may be written to disk</td><td>needs <b>UNDO</b></td></tr>
+<tr><td><b>No-steal</b></td><td>such blocks stay in memory until commit</td><td>no undo needed</td></tr>
+<tr><td><b>Force</b></td><td>all blocks of a transaction are written to disk at commit</td><td>no redo needed (but slow commits)</td></tr>
+<tr><td><b>No-force</b></td><td>blocks may be written after commit</td><td>needs <b>REDO</b></td></tr>
+</table></div>
+<p>Real DBMSs use <b>steal + no-force</b> (best performance) and therefore need both undo and redo, i.e. a log.
+Deferred modification ≈ no-steal (redo only); immediate modification ≈ steal (undo + redo).</p></div>
+
+<h3 id="s11-4">11.4 The log (system log / journal)</h3>
+<div class="box def"><div class="box-t">Definition — Log</div>
+The <b>log</b> is a sequential, append-only file kept on <b>stable storage</b> that records every update activity in the
+database. It is the most widely used structure for recording database modifications, and the basis of log-based
+recovery.</div>
+<p><b>Typical log records:</b></p>
+<div class="tbl-wrap"><table class="tbl small">
+<tr><th>Log record</th><th>Meaning</th></tr>
+<tr><td><code>&lt;Ti start&gt;</code></td><td>transaction Ti has started</td></tr>
+<tr><td><code>&lt;Ti, X, V<sub>1</sub>, V<sub>2</sub>&gt;</code></td><td>Ti wrote data item X; old value (<b>before-image</b>) V<sub>1</sub>, new value (<b>after-image</b>) V<sub>2</sub>. Old value is needed for UNDO, new value for REDO.</td></tr>
+<tr><td><code>&lt;Ti commit&gt;</code></td><td>Ti has committed</td></tr>
+<tr><td><code>&lt;Ti abort&gt;</code></td><td>Ti has aborted (rollback completed)</td></tr>
+<tr><td><code>&lt;checkpoint L&gt;</code></td><td>a checkpoint was taken; L = list of transactions active at that time</td></tr>
+<tr><td><code>[read_item, Ti, X]</code></td><td>(Elmasri) optional; used for auditing or some cascading-rollback schemes</td></tr>
+</table></div>
+<p>Each update record has: transaction identifier, data-item identifier (usually disk location), old value, new value.</p>
+<div class="box ex"><div class="box-t">Example log — transfer ₹50 from A (1000) to B (2000)</div>
+<pre><code>&lt;T0 start&gt;
+&lt;T0, A, 1000, 950&gt;
+&lt;T0, B, 2000, 2050&gt;
+&lt;T0 commit&gt;</code></pre></div>
+
+<h4>Write-Ahead Logging (WAL)</h4>
+{{svg:wal}}
+<div class="box def"><div class="box-t">WAL rules</div>
+<ol><li>A log record must be written to stable storage <b>before</b> the corresponding data block is written to disk
+(so the old value is always available for undo).</li>
+<li>Transaction Ti enters the committed state only after its <code>&lt;Ti commit&gt;</code> record has been written to stable storage.</li>
+<li>Before <code>&lt;Ti commit&gt;</code> is written, all log records of Ti must already be on stable storage.</li></ol></div>
+
+<h4>Undo and Redo operations</h4>
+<ul>
+<li><b>undo(Ti)</b> — restores the value of every data item updated by Ti to its <b>old value</b>, scanning Ti’s log records
+<b>backwards</b> (from the last one to the first).</li>
+<li><b>redo(Ti)</b> — sets the value of every data item updated by Ti to its <b>new value</b>, scanning <b>forwards</b>.</li>
+<li>Both are <b>idempotent</b>: executing them many times gives the same result as executing once. This matters because the
+system may crash again <i>during</i> recovery.</li>
+</ul>
+<p>There are two main log-based techniques, depending on <b>when</b> updates reach the database.</p>
+
+<h3 id="s11-5">11.5 Deferred database modification (NO-UNDO / REDO)</h3>
+<div class="box def"><div class="box-t">Idea</div>
+All writes of a transaction are recorded in the log, but the <b>actual database is not updated until the transaction
+partially commits</b>. Only after <code>&lt;Ti commit&gt;</code> is in the log are the deferred writes applied to the database.</div>
+<ul>
+<li>Log record format needs only the <b>new value</b>: <code>&lt;Ti, X, V<sub>new</sub>&gt;</code> (old value not needed — the
+database never contains uncommitted data).</li>
+<li><b>Recovery rule:</b> after a crash, <b>redo(Ti)</b> for every transaction that has <b>both</b> <code>&lt;Ti start&gt;</code> and
+<code>&lt;Ti commit&gt;</code> in the log. Transactions without a commit record are simply <b>ignored</b> — nothing of
+theirs reached the database, so <b>no undo is ever needed</b>.</li>
+</ul>
+<div class="box ex"><div class="box-t">Worked example (Korth) — A = 1000, B = 2000, C = 700</div>
+<p>T0: read(A); A := A − 50; write(A); read(B); B := B + 50; write(B). &nbsp; T1: read(C); C := C − 100; write(C). T0 runs, then T1.</p>
+<div class="side">
+<pre><code>&lt;T0 start&gt;
+&lt;T0, A, 950&gt;
+&lt;T0, B, 2050&gt;
+&lt;T0 commit&gt;
+&lt;T1 start&gt;
+&lt;T1, C, 600&gt;
+&lt;T1 commit&gt;</code></pre>
+<div class="tbl-wrap" style="margin:0"><table class="tbl small">
+<tr><th>Crash occurs just after…</th><th>Recovery action</th><th>Result</th></tr>
+<tr><td>(a) <code>&lt;T0, B, 2050&gt;</code></td><td>No commit for T0 → nothing to redo; ignore T0’s records</td><td>A = 1000, B = 2000, C = 700</td></tr>
+<tr><td>(b) <code>&lt;T1, C, 600&gt;</code></td><td>redo(T0) (committed); T1 has no commit → ignore</td><td>A = 950, B = 2050, C = 700</td></tr>
+<tr><td>(c) <code>&lt;T1 commit&gt;</code></td><td>redo(T0), then redo(T1)</td><td>A = 950, B = 2050, C = 600</td></tr>
+</table></div></div></div>
+
+<h3 id="s11-6">11.6 Immediate database modification (UNDO / REDO)</h3>
+<div class="box def"><div class="box-t">Idea</div>
+Database modifications may be written to the database <b>while the transaction is still active</b> (before it commits).
+Such modifications are called <b>uncommitted modifications</b>. Because of WAL, the log record with the old value is
+written first.</div>
+<ul>
+<li>Log records need <b>both old and new values</b>: <code>&lt;Ti, X, V<sub>old</sub>, V<sub>new</sub>&gt;</code>.</li>
+<li><b>Recovery rules:</b>
+<ul><li><b>undo(Ti)</b> if the log contains <code>&lt;Ti start&gt;</code> but <b>not</b> <code>&lt;Ti commit&gt;</code> (or <code>&lt;Ti abort&gt;</code>).</li>
+<li><b>redo(Ti)</b> if the log contains <b>both</b> <code>&lt;Ti start&gt;</code> and <code>&lt;Ti commit&gt;</code>.</li></ul></li>
+<li>Undo is done by scanning <b>backwards</b>; redo by scanning <b>forwards</b>. (Classic order: first undo all uncommitted
+transactions, then redo committed ones. Modern Korth: first redo everything — “repeat history” — then undo incomplete ones.
+For strict schedules both give the same final result.)</li>
+</ul>
+<div class="box ex"><div class="box-t">Same example with immediate modification</div>
+<div class="side">
+<pre><code>&lt;T0 start&gt;
+&lt;T0, A, 1000, 950&gt;
+&lt;T0, B, 2000, 2050&gt;
+&lt;T0 commit&gt;
+&lt;T1 start&gt;
+&lt;T1, C, 700, 600&gt;
+&lt;T1 commit&gt;</code></pre>
+<div class="tbl-wrap" style="margin:0"><table class="tbl small">
+<tr><th>Crash occurs just after…</th><th>Recovery action</th><th>Result</th></tr>
+<tr><td>(a) <code>&lt;T0, B, 2000, 2050&gt;</code></td><td>undo(T0): B ← 2000, A ← 1000</td><td>A = 1000, B = 2000, C = 700</td></tr>
+<tr><td>(b) <code>&lt;T1, C, 700, 600&gt;</code></td><td>undo(T1): C ← 700; redo(T0): A ← 950, B ← 2050</td><td>A = 950, B = 2050, C = 700</td></tr>
+<tr><td>(c) <code>&lt;T1 commit&gt;</code></td><td>redo(T0), redo(T1)</td><td>A = 950, B = 2050, C = 600</td></tr>
+</table></div></div></div>
+
+<div class="tbl-wrap"><table class="tbl small">
+<tr><th>Basis</th><th>Deferred modification</th><th>Immediate modification</th></tr>
+<tr><td>When the DB is updated</td><td>Only after the transaction commits</td><td>Any time, even before commit</td></tr>
+<tr><td>Log record</td><td><code>&lt;Ti, X, new&gt;</code></td><td><code>&lt;Ti, X, old, new&gt;</code></td></tr>
+<tr><td>Undo needed?</td><td>No</td><td>Yes (for uncommitted transactions)</td></tr>
+<tr><td>Redo needed?</td><td>Yes (for committed transactions)</td><td>Yes (for committed transactions)</td></tr>
+<tr><td>Algorithm name</td><td>NO-UNDO / REDO</td><td>UNDO / REDO</td></tr>
+<tr><td>Memory need</td><td>High (all updates of active transactions buffered)</td><td>Lower</td></tr>
+<tr><td>Commit time</td><td>Slower (all writes applied at commit)</td><td>Faster</td></tr>
+<tr><td>Uncommitted data on disk</td><td>Never</td><td>Possible</td></tr>
+</table></div>
+
+<h3 id="s11-7">11.7 Commit point of a transaction</h3>
+<div class="box def"><div class="box-t">Definition</div>
+A transaction reaches its <b>commit point</b> when <b>all its operations have executed successfully</b> and the effect of
+all its operations has been <b>recorded in the log</b>, and finally the <code>&lt;Ti commit&gt;</code> record is
+<b>force-written to stable storage</b>. Beyond the commit point the transaction is <b>committed</b> and its effects are
+assumed permanent.</div>
+<p><b>Role in recovery:</b> the commit point is the dividing line between UNDO and REDO.</p>
+<ul><li>A transaction that has <b>not</b> reached its commit point at a crash → its effects must be <b>undone</b> (rolled back).</li>
+<li>A transaction that <b>has</b> reached its commit point → its effects must be <b>redone</b> from the log if they did not
+reach the disk (durability).</li></ul>
+<p>The log is the only place that tells the recovery manager which side of the line each transaction is on.</p>
+
+<h3 id="s11-8">11.8 Checkpoints</h3>
+<p><b>Problem without checkpoints:</b> after a crash we would have to search the <b>entire</b> log to decide what to undo and
+redo. (1) This is very time-consuming. (2) Most transactions that need redoing have already written their updates to disk
+long ago — redoing them is harmless (idempotent) but wastes time.</p>
+<div class="box def"><div class="box-t">Checkpoint — definition and procedure</div>
+<p>A <b>checkpoint</b> is a point in time at which the DBMS forces everything to a known state, so that recovery can start
+from there instead of from the beginning of the log. To take a checkpoint (simple, non-fuzzy):</p>
+<ol><li>Output all log records currently in main memory onto stable storage.</li>
+<li>Output all modified (dirty) buffer blocks to the disk.</li>
+<li>Output a log record <code>&lt;checkpoint L&gt;</code> onto stable storage, where L is the list of transactions active
+at the time of the checkpoint.</li></ol>
+<p>No updates are allowed while the checkpoint is in progress.</p></div>
+<p><b>Recovery using a checkpoint:</b></p>
+<ol><li>Scan the log backwards from the end to find the most recent <code>&lt;checkpoint L&gt;</code>.</li>
+<li>Only transactions in L, or that started after the checkpoint, need to be considered. Transactions that committed
+<b>before</b> the checkpoint already have all their updates on disk → <b>ignore</b>.</li>
+<li>For each such transaction: if <code>&lt;Ti commit&gt;</code> is in the log → <b>redo(Ti)</b>; otherwise → <b>undo(Ti)</b>
+(immediate modification). With deferred modification, only redo.</li></ol>
+{{svg:checkpoint}}
+<div class="box ex"><div class="box-t">Worked example</div>
+<div class="side">
+<pre><code> 1 &lt;T0 start&gt;
+ 2 &lt;T0, A, 1000, 950&gt;
+ 3 &lt;T0 commit&gt;
+ 4 &lt;T1 start&gt;
+ 5 &lt;T1, B, 2000, 2050&gt;
+ 6 &lt;checkpoint {T1}&gt;
+ 7 &lt;T2 start&gt;
+ 8 &lt;T2, C, 700, 600&gt;
+ 9 &lt;T1 commit&gt;
+10 &lt;T3 start&gt;
+11 &lt;T3, A, 950, 900&gt;
+12 &lt;T2 commit&gt;
+   ---- CRASH ----</code></pre>
+<div style="max-width:430px">
+<ul><li>Last checkpoint: record 6, L = {T1}.</li>
+<li><b>T0</b> committed before the checkpoint → <b>ignore</b> (its A = 950 is already on disk).</li>
+<li><b>T1</b> (in L) and <b>T2</b> (started after) have commit records → <b>REDO</b>: B = 2050, C = 600.</li>
+<li><b>T3</b> has no commit → <b>UNDO</b>: A ← 950.</li>
+<li>Final: A = 950, B = 2050, C = 600. Write <code>&lt;T3 abort&gt;</code>.</li></ul></div></div></div>
+
+<h4>How often should checkpoints be taken? (PYQ)</h4>
+<div class="tbl-wrap"><table class="tbl small">
+<tr><th>Effect on…</th><th>Frequent checkpoints</th><th>Infrequent checkpoints</th></tr>
+<tr><td>Performance when <b>no failure</b> occurs</td><td>Worse — each checkpoint forces log and dirty pages to disk and briefly stalls updates</td><td>Better (less overhead)</td></tr>
+<tr><td>Time to recover from a <b>system crash</b></td><td>Shorter — less log after the last checkpoint to scan and redo</td><td>Longer</td></tr>
+<tr><td>Time to recover from a <b>media (disk) failure</b></td><td colspan="2">Essentially <b>not affected</b> by normal checkpoints. Media recovery restores the last <b>archival dump</b> and redoes the log from the dump, so it depends on how often <b>dumps</b> are taken. (Checkpoints only bound the work after a system crash.)</td></tr>
+</table></div>
+<p>So checkpoints should be taken often enough to keep crash-recovery time acceptable, but not so often that normal
+performance suffers. In practice: periodically (e.g. every few minutes) or after a fixed amount of log has been written.</p>
+<div class="box beyond"><div class="box-t">Fuzzy checkpoints</div>The simple checkpoint stops all updates while dirty blocks
+are written. A <b>fuzzy checkpoint</b> writes <code>&lt;checkpoint L&gt;</code> first and lets transactions continue while dirty
+pages are flushed in the background; recovery then uses the last <i>completed</i> checkpoint. Used in real systems (ARIES).</div>
+
+<h3 id="s11-9">11.9 The recovery algorithm (putting it together)</h3>
+{{svg:recov_phases}}
+<p><b>Transaction rollback during normal operation</b> (Ti aborts): scan the log backwards; for each <code>&lt;Ti, X, V1, V2&gt;</code>
+write V1 to X and log a <b>compensation (redo-only)</b> record <code>&lt;Ti, X, V1&gt;</code>; when <code>&lt;Ti start&gt;</code> is
+reached, write <code>&lt;Ti abort&gt;</code>.</p>
+<p><b>Recovery after a crash:</b></p>
+<ol><li><b>Redo phase:</b> find the last checkpoint; set undo-list = L. Scan forward: redo every update record
+<code>&lt;Ti, X, V1, V2&gt;</code> (and compensation record); add Ti to the undo-list on <code>&lt;Ti start&gt;</code>; remove it on
+<code>&lt;Ti commit&gt;</code> or <code>&lt;Ti abort&gt;</code>.</li>
+<li><b>Undo phase:</b> scan backward from the end; for every log record of a transaction in the undo-list, restore the old
+value (writing compensation records); when <code>&lt;Ti start&gt;</code> is found, write <code>&lt;Ti abort&gt;</code> and remove Ti.
+Stop when the undo-list is empty.</li></ol>
+
+<h3 id="s11-10">11.10 Shadow paging</h3>
+<div class="box def"><div class="box-t">Idea</div>
+Shadow paging is a recovery technique that needs <b>no log</b> in a single-user environment. The database is divided into
+fixed-size <b>pages</b>, and a <b>page table</b> maps page numbers to disk blocks. Two page tables are kept during a
+transaction: the <b>shadow page table</b> (never modified) and the <b>current page table</b>.</div>
+{{svg:shadow}}
+<p><b>How it works:</b></p>
+<ol><li>When the transaction starts, the current page table is a copy of the shadow page table. The shadow table is saved on
+disk; a fixed disk location (the <b>db-pointer</b>) points to it.</li>
+<li>When the transaction writes a page for the first time, a <b>copy</b> of the page is written to an unused disk block, and
+the <b>current</b> page table entry is changed to point to the copy. All further changes go to the copy. The shadow page
+table and the old page are not touched.</li>
+<li><b>Commit:</b> (i) flush all modified pages to disk; (ii) write the current page table to disk; (iii) <b>atomically</b>
+change the db-pointer to point to the current page table. The current table becomes the new shadow table.</li>
+<li><b>Crash / abort before step (iii):</b> just discard the current page table. The db-pointer still points to the shadow
+table, which describes the database exactly as it was before the transaction → the database is consistent. Free the
+modified pages (garbage collection).</li></ol>
+<p>Hence shadow paging is a <b>NO-UNDO / NO-REDO</b> technique.</p>
+<div class="grid2">
+<div class="box ex"><div class="box-t">Advantages</div><ul>
+<li>No overhead of writing log records (single-user case).</li>
+<li><b>Very fast recovery</b>: no undo, no redo, no log scan — just keep the shadow table.</li>
+<li>Simple to implement for single-user systems.</li></ul></div>
+<div class="box warn"><div class="box-t">Disadvantages</div><ul>
+<li><b>Commit overhead</b>: every commit must write many blocks (data pages + whole page table).</li>
+<li><b>Data fragmentation</b>: updated pages move to new locations, destroying locality (related pages no longer close together).</li>
+<li><b>Garbage collection</b>: old versions of pages become garbage and must be found and freed.</li>
+<li>Hard to extend to <b>concurrent</b> transactions — logs and checkpoints are needed anyway.</li>
+<li>Copying a large page table is expensive (needs a tree-structured page table).</li></ul></div>
+</div>
+
+<h3 id="s11-11">11.11 Recovery from media (disk) failure</h3>
+<ul><li>Periodically take an <b>archival dump</b>: copy the entire database to stable storage (tape / another site). During the dump:
+output log records and dirty blocks, copy the database, then write <code>&lt;dump&gt;</code> to the log.</li>
+<li>After a disk failure: <b>restore</b> the database from the latest dump, then <b>redo</b> all transactions that committed after the
+dump using the log (which is on stable storage, so it survived).</li>
+<li><b>Remote backup systems</b> keep a live copy at another site by shipping log records continuously, for high availability.</li></ul>
+
+<div class="box beyond"><div class="box-t">ARIES in one paragraph</div>
+ARIES (used by IBM DB2, SQL Server) is the industrial recovery algorithm. Every log record has a <b>log sequence number
+(LSN)</b>; every page stores the LSN of the last update applied to it (PageLSN), so redo is applied only if needed. It uses
+<b>fuzzy checkpoints</b>, a dirty-page table and a transaction table, and recovers in three passes:
+<b>Analysis</b> (find dirty pages and active transactions), <b>Redo</b> (repeat history from the right point) and
+<b>Undo</b> (roll back losers, writing compensation log records).</div>
+
+<div class="box exam"><div class="box-t">Exam tip</div>
+For log questions always: (1) state the technique (deferred / immediate), (2) write the log with the right record format,
+(3) for each crash point, list which transactions are <b>committed</b> (have a commit record) → redo, and which are
+<b>not</b> → undo (immediate) or ignore (deferred), (4) give the final values of every item.</div>

@@ -1,0 +1,175 @@
+<!-- ============================================================ 4 -->
+<h2 id="s4"><span class="num">4</span>Serial, Concurrent and Parallel Execution</h2>
+<p>When several transactions are submitted, the DBMS can execute them in different ways. Your syllabus asks for
+<b>concurrent versus parallel</b> execution, and the class compared <b>serial versus concurrent</b>. We cover all three.</p>
+
+{{svg:exec_timeline}}
+
+<h3 id="s4-1">4.1 Serial execution</h3>
+<div class="box def"><div class="box-t">Definition</div>
+One transaction <b>completes entirely</b> before the next one begins. There is <b>no interleaving</b> of operations
+between transactions. For transactions T1 and T2 there are two serial orders: T1 → T2 or T2 → T1. For <i>n</i>
+transactions there are <b>n!</b> possible serial orders.</div>
+<div class="grid2">
+<div class="box ex"><div class="box-t">Advantages</div><ol>
+<li>Always gives <b>consistent</b> results (each transaction sees a consistent database and leaves one).</li>
+<li>No confusion, no interference between transactions.</li>
+<li>Simpler recovery / rollback.</li></ol></div>
+<div class="box warn"><div class="box-t">Disadvantages</div><ol>
+<li><b>Poor resource utilisation</b> — the CPU sits idle while a transaction waits for disk I/O.</li>
+<li><b>Low throughput</b> (fewer transactions per unit time).</li>
+<li><b>Long waiting time</b> — a short transaction must wait for a long earlier one to finish.</li></ol></div>
+</div>
+
+<h3 id="s4-2">4.2 Concurrent execution</h3>
+<div class="box def"><div class="box-t">Definition</div>
+The operations of multiple transactions are <b>interleaved</b>: while one transaction waits (e.g. for disk I/O),
+the CPU executes an operation of another transaction, and so on. On a single CPU only one operation runs at a
+time, but the transactions <i>appear</i> to run simultaneously.</div>
+<div class="grid2">
+<div class="box ex"><div class="box-t">Advantages</div><ol>
+<li><b>Higher throughput</b> — more transactions completed per unit time.</li>
+<li><b>Better resource utilisation</b> — CPU and disk work in parallel (while one works, the other is paused).</li>
+<li><b>Reduced average waiting / response time</b> — short transactions don’t wait for long ones to finish.</li></ol></div>
+<div class="box warn"><div class="box-t">Disadvantage</div>
+Results <b>may or may not be consistent</b>. The order of operations becomes very important: a bad interleaving
+causes lost updates, dirty reads, etc. (Section 5). Recovery also becomes complicated.</div>
+</div>
+<div class="box key"><div class="box-t">So what do we do?</div>
+We prefer <b>concurrent execution, but with a correct order</b> — one that is <b>equivalent to some serial order</b>.
+Such schedules are called <b>serializable</b> (Section 6), and the DBMS uses <b>concurrency-control protocols</b>
+(Section 8) to allow only those.</div>
+
+<h3 id="s4-3">4.3 Concurrent vs Parallel execution</h3>
+<p>The words sound similar, but they are different:</p>
+<ul>
+<li><b>Concurrent</b> = transactions are <b>in progress at the same time</b>, their operations interleaved. Can happen on a
+<b>single</b> processor by time-slicing. It is about <i>dealing with</i> many things at once.</li>
+<li><b>Parallel</b> = operations <b>physically execute at the same instant</b> on <b>multiple</b> processors / cores /
+disks. It is about <i>doing</i> many things at once.</li>
+</ul>
+<div class="tbl-wrap"><table class="tbl">
+<tr><th>Basis</th><th>Concurrent execution</th><th>Parallel execution</th></tr>
+<tr><td>Meaning</td><td>Interleaving of operations of several transactions</td><td>Simultaneous execution on multiple processing units</td></tr>
+<tr><td>Hardware</td><td>Possible with a single CPU</td><td>Needs multiple CPUs / cores / disks (parallel database system)</td></tr>
+<tr><td>At one instant</td><td>Only one operation actually runs; others are paused</td><td>Several operations really run at the same time</td></tr>
+<tr><td>Main goal</td><td>Better utilisation (overlap CPU with I/O), lower waiting time</td><td>Speed-up (finish faster) and scale-up (handle more load)</td></tr>
+<tr><td>Speed-up</td><td>Logical; total CPU work is the same</td><td>Real; work divided among processors</td></tr>
+<tr><td>Concurrency control needed?</td><td colspan="2" class="center"><b>Yes, in both</b> — whenever transactions share data, conflicting operations must be ordered correctly</td></tr>
+<tr><td>Example</td><td>One server handling many ATM users by switching between them</td><td>A query on a huge table split across 8 cores, each scanning a part</td></tr>
+</table></div>
+<div class="box beyond"><div class="box-t">Types of parallelism in databases</div>
+<ul><li><b>Inter-query parallelism</b>: different queries / transactions run on different processors at the same time
+(increases throughput).</li>
+<li><b>Intra-query parallelism</b>: a single big query is split into parts that run in parallel (reduces response time),
+e.g. parallel sort, parallel join.</li></ul>
+<p>Every parallel execution is also concurrent, but not every concurrent execution is parallel.</p></div>
+
+<!-- ============================================================ 5 -->
+<h2 id="s5"><span class="num">5</span>Typical Concurrency Problems</h2>
+<p>If concurrent transactions are interleaved <b>without control</b>, four classic problems appear. Each comes from a
+particular pair of <b>conflicting operations</b> on the same data item by two different transactions:</p>
+<div class="tbl-wrap"><table class="tbl small center">
+<tr><th>Conflict</th><th>Meaning</th><th>Problem it causes</th></tr>
+<tr><td>W–W</td><td>a write overwrites another transaction’s write</td><td>Lost Update</td></tr>
+<tr><td>W–R</td><td>a read sees another transaction’s <i>uncommitted</i> write</td><td>Dirty Read</td></tr>
+<tr><td>R–W</td><td>a write changes a value that another transaction has read and will read again</td><td>Unrepeatable Read</td></tr>
+<tr><td>R–(Insert/Delete)</td><td>rows matching a condition are added/removed between two reads</td><td>Phantom Read</td></tr>
+</table></div>
+
+<h3 id="s5-1">5.1 The Lost Update problem</h3>
+<div class="box def"><div class="box-t">Definition</div>
+Two transactions read the <b>same</b> data item and then both update it based on the value they read. The second
+write <b>overwrites</b> the first, so the first transaction’s update is <b>lost</b>, as if it never happened.
+(Write–Write conflict.)</div>
+<div class="box ex"><div class="box-t">Example (X = 10; T1 adds 10, T2 adds 20)</div>
+{{sched:lost}}
+<p>Any serial order gives X = 10 + 10 + 20 = <b>40</b>. The interleaved execution gives <b>30</b>: T2 computed its new value
+from the stale value 10, so T1’s +10 is lost. <b>Cause:</b> T2 read X before T1 wrote it, and wrote X after T1 wrote it.</p>
+</div>
+<div class="box note"><div class="box-t">Source note</div>
+The class example writes “write after X = X + 10 is missing, so 10 is not updated”. The table above shows the same
+idea step by step with values. The PDF’s non-serial schedule (Schedule C in Section 6) is another lost update:
+T2’s <code>write(X)</code> overwrites T1’s <code>write(X)</code>.</div>
+
+<h3 id="s5-2">5.2 The Dirty Read (Temporary Update) problem</h3>
+<div class="box def"><div class="box-t">Definition</div>
+A <b>dirty read</b> occurs when a transaction reads data that has been modified by another concurrent transaction
+that has <b>not yet committed</b>. If the first transaction then <b>rolls back</b>, the second transaction has read
+(and maybe used) a value that <b>never officially existed</b>. (Write–Read conflict.)</div>
+<div class="box ex"><div class="box-t">Example (X = 10)</div>
+{{sched:dirty}}
+<p>T1 fails (e.g. server down) after T2 has read 20. T1’s change is undone (X = 10), but T2 has already computed and
+committed 40 from the dirty value 20. The database is now wrong, and because T2 already committed, it cannot be
+undone — a <b>non-recoverable</b> situation (Section 7).</p>
+</div>
+<p><b>How to overcome it (asked in PYQ):</b></p>
+<ul>
+<li>A transaction should read a value <b>only after the writing transaction has committed</b> (“read only committed
+data”). Schedules that obey this are called <b>cascadeless</b>.</li>
+<li>If the parent (writer) rolls back, the child (reader) must also roll back; to avoid this, the child should read
+only after the parent commits (class note).</li>
+<li>In practice: use <b>Strict 2PL</b> — exclusive locks are held until commit, so nobody can read an uncommitted value;
+or set isolation level <b>READ COMMITTED</b> or higher.</li>
+</ul>
+
+<h3 id="s5-3">5.3 The Unrepeatable (Non-repeatable) Read problem</h3>
+<div class="box def"><div class="box-t">Definition</div>
+A transaction reads the <b>same data item twice</b> and gets <b>two different values</b>, because another transaction
+modified (and committed) that item between the two reads. (Read–Write conflict.)</div>
+<div class="box ex"><div class="box-t">Example (X = 10)</div>
+{{sched:unrep}}
+<p>Within the same transaction T2, <code>read(X)</code> gave 10 the first time and 20 the second time — two different
+outcomes for the same read. E.g. a booking transaction sees “1 seat available”, and when it re-reads to book, the
+seat is gone.</p></div>
+
+<h3 id="s5-4">5.4 The Phantom Read problem</h3>
+<div class="box def"><div class="box-t">Definition</div>
+A transaction executes a query that returns a <b>set of rows satisfying a condition</b>; another transaction then
+<b>inserts or deletes</b> rows that satisfy that condition and commits. When the first transaction re-executes the
+same query, it sees <b>new (“phantom”) rows appear</b>, or some rows disappear.</div>
+<div class="box ex"><div class="box-t">Example</div>
+{{sched:phantom}}
+</div>
+<div class="box note"><div class="box-t">Correction / clarification of the class example</div>
+<p>In class, phantom read was shown as: T1 reads X, T2 reads X, T1 <b>deletes</b> X, and T2’s second read of X fails
+because X no longer exists.</p>
+{{sched:phantom_lec}}
+<p>That captures the idea that a row “vanishes”, but the precise textbook meaning is about a <b>set of rows defined by a
+condition</b> (a predicate) changing because of <b>INSERT/DELETE</b> by another transaction. The key difference:</p>
+<ul><li><b>Unrepeatable read</b> — the <b>same row</b> shows a <b>different value</b> (caused by UPDATE).</li>
+<li><b>Phantom read</b> — the <b>set of rows</b> changes; new rows appear or old rows disappear (caused by INSERT / DELETE).</li></ul>
+<p>A phantom can also be caused by an <b>UPDATE</b> that makes an existing row start (or stop) satisfying the condition — e.g. T2 changes a student’s dept from 'CSE' to 'IT'; T1’s count of IT students goes up although no row was inserted.</p>
+<p>Why it matters: locking the rows you have read does <b>not</b> prevent phantoms, because the new row did not exist
+when you took your locks. Preventing phantoms needs <b>predicate / index (range) locking</b> or the SERIALIZABLE
+isolation level.</p></div>
+
+<h3 id="s5-5">5.5 One more: Incorrect Summary problem <span class="beyond-tag">beyond syllabus</span></h3>
+<p>One transaction computes an aggregate (sum, count) while another is updating some of the items. The aggregate
+mixes old and new values, so it matches no consistent state.</p>
+{{sched:incsum}}
+
+<h3 id="s5-6">5.6 Summary of the problems</h3>
+<div class="tbl-wrap"><table class="tbl small">
+<tr><th>Problem</th><th>Conflict</th><th>Cause (in one line)</th><th>Effect</th><th>Prevented by</th></tr>
+<tr><td>Lost update</td><td>W–W (after both read)</td><td>Two transactions update the same item from the same old value</td><td>One update disappears</td><td>2PL (X-lock before read-modify-write)</td></tr>
+<tr><td>Dirty read</td><td>W–R</td><td>Reading an uncommitted value</td><td>Using data that may be rolled back; cascading rollback</td><td>Strict 2PL; READ COMMITTED</td></tr>
+<tr><td>Unrepeatable read</td><td>R–W</td><td>Item updated between two reads of the same transaction</td><td>Same read, different values</td><td>2PL (hold S-lock till end); REPEATABLE READ</td></tr>
+<tr><td>Phantom read</td><td>R–Insert/Delete</td><td>Rows inserted/deleted that match a query condition</td><td>Query result set changes</td><td>Predicate/index locking; SERIALIZABLE</td></tr>
+</table></div>
+
+<h3 id="s5-7">5.7 SQL isolation levels <span class="beyond-tag">beyond syllabus</span></h3>
+<p>SQL lets the programmer trade correctness for speed by choosing an <b>isolation level</b>:</p>
+<pre><code>SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;</code></pre>
+<div class="tbl-wrap"><table class="tbl small center">
+<tr><th>Isolation level</th><th>Dirty read</th><th>Unrepeatable read</th><th>Phantom read</th></tr>
+<tr><td>READ UNCOMMITTED</td><td class="n">possible</td><td class="n">possible</td><td class="n">possible</td></tr>
+<tr><td>READ COMMITTED</td><td class="y">prevented</td><td class="n">possible</td><td class="n">possible</td></tr>
+<tr><td>REPEATABLE READ</td><td class="y">prevented</td><td class="y">prevented</td><td class="n">possible</td></tr>
+<tr><td>SERIALIZABLE</td><td class="y">prevented</td><td class="y">prevented</td><td class="y">prevented</td></tr>
+</table></div>
+<p>Lost updates are prevented at every level in standard SQL (writes always take exclusive locks held till commit).</p>
+
+<div class="box exam"><div class="box-t">Exam tip — “Discuss the causes of Lost Update, Dirty Read, Non-repeatable Read and Phantom Read”</div>
+For each problem write: (1) one-line definition, (2) a small 2-column schedule table with values,
+(3) the cause in one line (which conflict), (4) how it is prevented. Finish with the summary table above.</div>

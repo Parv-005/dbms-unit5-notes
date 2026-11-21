@@ -1,0 +1,558 @@
+<!-- ------------------------------------------------ P5 -->
+<h3 id="p5">14.5 Lock-based protocols &amp; 2PL</h3>
+
+<div class="pyq">
+<div class="pyq-h"><span class="chip acc">End-Sem Nov–Dec 2024</span><span class="chip">Q5(a)</span><span class="chip warn">5 marks</span></div>
+<div class="pyq-q"><p>Explain the differences between Two-Phase Locking (2PL), Strict 2PL, and Rigorous 2PL with the help of a schedule. How does
+each variant enhance data consistency and concurrency?</p></div>
+<details><summary>Show answer</summary><div class="ans">
+<p>All three use shared (S) and exclusive (X) locks with the compatibility rule that only S–S is compatible.</p>
+<h4>1. Basic 2PL</h4>
+<p>Each transaction has a <b>growing phase</b> (acquire locks, no release) followed by a <b>shrinking phase</b> (release locks, no
+acquire). The point of the last lock acquisition is the <b>lock point</b>.</p>
+{{svg:twopl}}
+{{sched:twopl_nonrec}}
+<p><b>Consistency:</b> guarantees <b>conflict serializability</b> (the serial order is the order of lock points), so no lost
+update or inconsistent analysis. <b>But</b> since T1 may unlock A before committing, T2 can read an uncommitted value: dirty
+reads, cascading rollbacks and even non-recoverable schedules (above) are possible. <b>Concurrency:</b> highest of the three,
+because locks are released as early as possible.</p>
+<h4>2. Strict 2PL</h4>
+<p>2PL + <b>all exclusive locks are held until the transaction commits or aborts</b> (S-locks may be released earlier).</p>
+{{sched:strict}}
+<p><b>Consistency:</b> conflict serializable <b>and</b> strict ⇒ no transaction can read or overwrite uncommitted data ⇒
+<b>cascadeless and recoverable</b>; recovery is simple. <b>Concurrency:</b> slightly lower than basic 2PL because writers keep
+their X-locks till the end.</p>
+<h4>3. Rigorous 2PL</h4>
+<p>2PL + <b>all locks (S and X) are held until commit or abort</b>.</p>
+{{sched:rigorous}}
+<p><b>Consistency:</b> everything strict 2PL gives, and transactions are serialized in their <b>commit order</b> (T1 commits first,
+so T1 → T2), which is simple to reason about. <b>Concurrency:</b> lowest of the three, since even read locks are held to the end.</p>
+<h4>Summary</h4>
+<div class="tbl-wrap"><table class="tbl small">
+<tr><th></th><th>Basic 2PL</th><th>Strict 2PL</th><th>Rigorous 2PL</th></tr>
+<tr><td>Lock release</td><td>Any time after lock point</td><td>X-locks only after commit/abort</td><td>All locks only after commit/abort</td></tr>
+<tr><td>Conflict serializable</td><td class="y">Yes</td><td class="y">Yes</td><td class="y">Yes</td></tr>
+<tr><td>Cascadeless / recoverable</td><td class="n">Not guaranteed</td><td class="y">Yes</td><td class="y">Yes</td></tr>
+<tr><td>Serialization order</td><td>Lock-point order</td><td>Lock-point order</td><td>Commit order</td></tr>
+<tr><td>Deadlock</td><td class="n">Possible</td><td class="n">Possible</td><td class="n">Possible</td></tr>
+<tr><td>Concurrency</td><td>Highest</td><td>Medium</td><td>Lowest</td></tr></table></div>
+<p class="answer-line">Basic 2PL fixes consistency under concurrency; strict 2PL also fixes consistency under failures (no cascades); rigorous 2PL adds commit-order serialization at the cost of concurrency.</p>
+</div></details></div>
+
+<div class="pyq">
+<div class="pyq-h"><span class="chip acc">End-Sem 2026 Summer</span><span class="chip">Q5(a)</span><span class="chip warn">5 marks</span></div>
+<div class="pyq-q"><p>Compare Basic Two-Phase Locking (2PL), Strict 2PL, Rigorous 2PL, and Conservative 2PL with respect to:
+(i) Lock acquisition (ii) Deadlock possibility (iii) Recoverability (iv) Cascading rollback (v) Concurrency.
+Support your answer with suitable schedules.</p></div>
+<details><summary>Show answer</summary><div class="ans">
+<p><b>Definitions.</b> <i>Basic 2PL:</i> growing phase (only acquire) then shrinking phase (only release). <i>Strict 2PL:</i> basic +
+X-locks held until commit/abort. <i>Rigorous 2PL:</i> basic + all locks held until commit/abort. <i>Conservative (static) 2PL:</i>
+a transaction acquires all the locks it needs (predeclared read/write sets) before it starts; if any lock is unavailable it
+acquires none and waits.</p>
+{{svg:twopl_variants}}
+<div class="tbl-wrap"><table class="tbl small">
+<tr><th>Aspect</th><th>Basic 2PL</th><th>Strict 2PL</th><th>Rigorous 2PL</th><th>Conservative 2PL</th></tr>
+<tr><td>(i) Lock acquisition</td><td>Incrementally, as needed, during growing phase</td><td>Incrementally</td><td>Incrementally</td><td>All at once before the first operation</td></tr>
+<tr><td>(ii) Deadlock</td><td class="n">Possible</td><td class="n">Possible</td><td class="n">Possible</td><td class="y">Impossible (no hold-and-wait)</td></tr>
+<tr><td>(iii) Recoverability</td><td class="n">Not guaranteed</td><td class="y">Guaranteed</td><td class="y">Guaranteed</td><td class="n">Not guaranteed (unless locks also held till commit)</td></tr>
+<tr><td>(iv) Cascading rollback</td><td class="n">Possible</td><td class="y">Avoided</td><td class="y">Avoided</td><td class="n">Possible</td></tr>
+<tr><td>(v) Concurrency</td><td>Highest</td><td>Lower (X held to end)</td><td>Lowest of incremental ones (all held to end)</td><td>Low (items locked from the start, even before use)</td></tr>
+</table></div>
+<h4>Supporting schedules</h4>
+<p><b>Basic 2PL — recoverability/cascading problem:</b> T1 releases its X-lock before committing, T2 reads the dirty value and commits first:</p>
+{{sched:twopl_nonrec}}
+<p><b>Basic / Strict / Rigorous 2PL — deadlock:</b> each transaction holds one X-lock and requests the other’s (all locks held, so it obeys strict and rigorous too):</p>
+{{sched:strictdead}}
+<p><b>Strict 2PL — cascadeless:</b> T1 holds X(B) until after commit, so T2 can read B only after T1 commits:</p>
+{{sched:strict}}
+<p><b>Rigorous 2PL — commit order:</b></p>
+{{sched:rigorous}}
+<p><b>Conservative 2PL — no deadlock:</b> T2 cannot hold X(A) while waiting for X(B); it waits holding nothing:</p>
+{{sched:conservative}}
+<p class="answer-line">Only conservative 2PL is deadlock-free; only strict and rigorous guarantee recoverable, cascadeless schedules; concurrency decreases from basic → strict → rigorous, and conservative is low because it locks everything up front.</p>
+</div></details></div>
+
+<div class="pyq">
+<div class="pyq-h"><span class="chip acc">End-Sem Nov–Dec 2025</span><span class="chip">Q5(a)(a)</span><span class="chip warn">part of 5 marks</span><span class="chip">also ITITC05 Q4(a)</span></div>
+<div class="pyq-q"><p>Prove that the basic two-phase locking protocol guarantees conflict serializability of schedules. (Hint: show that if a
+serializability graph for a schedule has a cycle, then at least one of the transactions participating in the schedule does
+not obey the two-phase locking protocol.)</p></div>
+<details><summary>Show answer</summary><div class="ans">
+<p><b>Basic 2PL:</b> every transaction acquires all its locks (growing phase) before it releases any lock (shrinking phase).
+A schedule is conflict serializable iff its precedence (serializability) graph is acyclic.</p>
+<p><b>Lemma.</b> If the graph has an edge Ti → Tj, then Ti released some lock before Tj acquired a lock, i.e. for some item Q,
+<code>unlock<sub>i</sub>(Q) &lt; lock<sub>j</sub>(Q)</code>.<br>
+<i>Proof:</i> Ti → Tj means Ti executed an operation on Q, and later Tj executed a conflicting operation on Q (at least one
+is a write). Ti held a lock on Q for its operation, and Tj needs a lock on Q in a mode incompatible with Ti’s (S/X, X/S or X/X
+— only S/S is compatible). So Tj’s lock can be granted only after Ti releases its lock on Q. ∎</p>
+<p><b>Theorem.</b> Suppose the graph has a cycle T1 → T2 → … → Tn → T1. Apply the lemma to each edge:</p>
+<ul><li>T1 → T2: unlock<sub>1</sub>(Q<sub>1</sub>) &lt; lock<sub>2</sub>(Q<sub>1</sub>)</li>
+<li>T2 → T3: unlock<sub>2</sub>(Q<sub>2</sub>) &lt; lock<sub>3</sub>(Q<sub>2</sub>)</li>
+<li>…</li>
+<li>Tn → T1: unlock<sub>n</sub>(Q<sub>n</sub>) &lt; lock<sub>1</sub>(Q<sub>n</sub>)</li></ul>
+<p>Assume, for contradiction, that every transaction obeys 2PL. Then inside each Tk every lock precedes every unlock, so
+lock<sub>k</sub>(Q<sub>k−1</sub>) &lt; unlock<sub>k</sub>(Q<sub>k</sub>). Chaining:</p>
+<p class="center"><code>unlock<sub>1</sub>(Q<sub>1</sub>) &lt; lock<sub>2</sub>(Q<sub>1</sub>) &lt; unlock<sub>2</sub>(Q<sub>2</sub>) &lt; lock<sub>3</sub>(Q<sub>2</sub>) &lt; … &lt; unlock<sub>n</sub>(Q<sub>n</sub>) &lt; lock<sub>1</sub>(Q<sub>n</sub>)</code></p>
+<p>Thus T1 acquires a lock on Q<sub>n</sub> <b>after</b> releasing its lock on Q<sub>1</sub> — T1 violates 2PL, a contradiction.
+Hence if the graph has a cycle, at least one transaction does not obey 2PL. Equivalently, if all transactions obey 2PL, the
+graph has no cycle, and the schedule is conflict serializable. ∎</p>
+<p><b>Corollary (serial order).</b> Let LP(T) be the lock point. For every edge Ti → Tj: LP(Ti) ≤ unlock<sub>i</sub>(Q) &lt;
+lock<sub>j</sub>(Q) ≤ LP(Tj). So transactions are serializable in the order of their lock points.</p>
+</div></details></div>
+
+<div class="pyq">
+<div class="pyq-h"><span class="chip acc">End-Sem (year not printed)</span><span class="chip">Q4(b)</span><span class="chip warn">4 marks</span></div>
+<div class="pyq-q"><p>Consider the following two transactions:<br>
+T1: read(X); read(Y); read(Z); if X = 0 then Y := Y + 1; write(Y)<br>
+T2: read(Y); read(Z); read(X); if Y = 0 then X := X + 1; write(X)<br>
+Add lock and unlock instructions to T1 and T2 so that they observe the two-phase locking protocol. Can the execution of these
+transactions result in a deadlock?</p></div>
+<details><summary>Show answer</summary><div class="ans">
+<p>Rule: lock-S for items only read, lock-X for items that are written (taken before the read, or lock-S then upgrade), and in
+each transaction <b>every lock precedes the first unlock</b>.</p>
+<div class="tbl-wrap" style="max-width:640px;margin:auto"><table class="tbl small"><tr><th>T1</th><th>T2</th></tr>
+<tr><td><code>lock-S(X)<br>read(X)<br>lock-X(Y)<br>read(Y)<br>lock-S(Z)<br>read(Z)<br>if X = 0 then Y := Y + 1<br>write(Y)<br>unlock(X)<br>unlock(Y)<br>unlock(Z)</code></td>
+<td><code>lock-S(Y)<br>read(Y)<br>lock-S(Z)<br>read(Z)<br>lock-X(X)<br>read(X)<br>if Y = 0 then X := X + 1<br>write(X)<br>unlock(Y)<br>unlock(Z)<br>unlock(X)</code></td></tr></table></div>
+<p>Each transaction acquires all three locks (growing phase) before releasing any (shrinking phase) ⇒ both follow 2PL. (For
+strict 2PL, the unlocks would come after commit.)</p>
+<p><b>Yes, a deadlock is possible.</b> One such execution:</p>
+{{sched:pyq_e4_dead}}
+<p>T1 waits for T2 (to release S(Y)) and T2 waits for T1 (to release S(X)) — a cycle in the wait-for graph. 2PL ensures
+serializability but not freedom from deadlock. (Z causes no problem since S–S locks are compatible.)</p>
+</div></details></div>
+
+<div class="pyq">
+<div class="pyq-h"><span class="chip acc">End-Sem Nov–Dec 2023</span><span class="chip">Q4(b)</span><span class="chip warn">4 marks</span></div>
+<div class="pyq-q"><p>Does conservative 2-phase locking protocol eliminate the problem of deadlock? Which of the below transactions follow 2PL
+protocol? Give reason to support your answer. Explain which statements in the transactions are in which phase.</p>
+<div class="tbl-wrap" style="max-width:520px"><table class="tbl small"><tr><th>T1</th><th>T2</th></tr>
+<tr><td><code>read-lock(X)<br>Read(X)<br>write-lock(Y)<br>unlock(X)<br>Read(Y)<br>Y = Y + X<br>Write(Y)<br>unlock(Y)</code></td>
+<td><code>read-lock(X)<br>Read(X)<br>unlock(X)<br>write-lock(Y)<br>Read(Y)<br>Y = Y + X<br>Write(Y)<br>unlock(Y)</code></td></tr></table></div></div>
+<details><summary>Show answer</summary><div class="ans">
+<h4>Does conservative 2PL eliminate deadlock? — Yes</h4>
+<p>In conservative (static) 2PL a transaction must obtain <b>all</b> the locks it needs <b>before it starts executing</b>. If any
+lock is unavailable, it obtains none and waits. So a transaction never holds some locks while waiting for others (the
+“hold and wait” condition never holds), and a circular wait cannot form ⇒ deadlock is impossible. (It can still cause
+<b>starvation</b> and reduces concurrency, and it needs the read/write sets in advance.)</p>
+<h4>Which transactions follow 2PL?</h4>
+<p><b>T1 follows 2PL.</b> All its lock requests (read-lock(X), write-lock(Y)) come before its first unlock (unlock(X)).</p>
+<ul><li><b>Growing phase of T1:</b> read-lock(X), Read(X), write-lock(Y). The lock point is write-lock(Y) (last lock acquired).</li>
+<li><b>Shrinking phase of T1:</b> unlock(X), Read(Y), Y = Y + X, Write(Y), unlock(Y). After unlock(X) it acquires no new lock;
+Read/Write(Y) are allowed because it still holds the write-lock on Y.</li></ul>
+<p><b>T2 does NOT follow 2PL.</b> It executes unlock(X) and <b>then</b> requests write-lock(Y) — acquiring a lock after releasing
+one violates the two-phase rule.</p>
+<ul><li>Its growing phase would be read-lock(X), Read(X); its shrinking phase begins at unlock(X); write-lock(Y) then appears
+inside the shrinking phase, which is not allowed.</li>
+<li>To make T2 two-phase, move unlock(X) after write-lock(Y) (e.g. just before or after Write(Y)).</li></ul>
+<p class="answer-line">Conservative 2PL is deadlock-free; T1 obeys 2PL, T2 does not.</p>
+</div></details></div>
+
+<div class="pyq">
+<div class="pyq-h"><span class="chip acc">End-Sem Nov–Dec 2022</span><span class="chip">Q4(c)</span><span class="chip warn">4 marks</span></div>
+<div class="pyq-q"><p>What do you mean by two-phase locking protocol? Differentiate between strict two-phase locking and rigorous two-phase locking
+protocol. Are the schedules generated by these protocols serializable and cascadeless?</p></div>
+<details><summary>Show answer</summary><div class="ans">
+<p><b>Two-phase locking (2PL):</b> a protocol requiring every transaction to issue lock and unlock requests in two phases:
+(1) <b>growing phase</b> — the transaction may obtain locks (and upgrade) but not release any; (2) <b>shrinking phase</b> — it may
+release locks (and downgrade) but not obtain any new lock. The point where it acquires its final lock is the <b>lock point</b>.
+2PL guarantees conflict serializability.</p>
+{{svg:twopl}}
+<div class="tbl-wrap"><table class="tbl small">
+<tr><th>Basis</th><th>Strict 2PL</th><th>Rigorous 2PL</th></tr>
+<tr><td>Rule</td><td>All <b>exclusive</b> locks held until commit/abort</td><td><b>All</b> locks (shared and exclusive) held until commit/abort</td></tr>
+<tr><td>Shared locks</td><td>May be released earlier (after the lock point)</td><td>Held till the end</td></tr>
+<tr><td>Serialization order</td><td>Order of lock points</td><td>Order of commits</td></tr>
+<tr><td>Concurrency</td><td>Higher</td><td>Lower</td></tr>
+<tr><td>Relationship</td><td colspan="2">Every rigorous-2PL schedule is also strict-2PL (rigorous ⊂ strict ⊂ basic 2PL)</td></tr>
+<tr><td>Deadlock</td><td colspan="2">Both can deadlock</td></tr></table></div>
+<p>Example under strict 2PL (S-lock on A released early, X-lock on B only after commit):</p>
+{{sched:strict}}
+<p><b>Are the schedules serializable and cascadeless? — Yes, both.</b></p>
+<ul><li><b>Serializable:</b> strict and rigorous 2PL are special cases of 2PL, and every 2PL schedule is conflict serializable.</li>
+<li><b>Cascadeless:</b> in both, an X-lock is held until the writer commits or aborts, so no other transaction can read
+(or overwrite) an uncommitted value. Hence the schedules are strict, therefore cascadeless and recoverable.</li></ul>
+</div></details></div>
+
+<div class="pyq">
+<div class="pyq-h"><span class="chip acc">Mid-Sem Oct 2021</span><span class="chip">Q4(b)</span><span class="chip warn">4 marks</span></div>
+<div class="pyq-q"><p>What is the conservative 2-phase locking protocol? Discuss the advantages of strict and rigorous locking protocols over the
+conservative protocol. Does locking always eliminate the problem of deadlock? Illustrate your answer with an example.</p></div>
+<details><summary>Show answer</summary><div class="ans">
+<p><b>Conservative (static) 2PL:</b> a transaction must predeclare its read-set and write-set and <b>acquire all its locks before it
+begins execution</b>. If any required lock is not available, it acquires none of them and waits. Since there is no
+hold-and-wait, it is deadlock-free.</p>
+<p><b>Advantages of strict / rigorous 2PL over conservative 2PL:</b></p>
+<ol><li><b>No advance knowledge needed:</b> locks are taken when an item is actually accessed. Conservative 2PL must know all
+items in advance, which is hard when access depends on data (if-conditions, queries).</li>
+<li><b>Better concurrency / resource utilisation:</b> items are locked only from the time they are needed; conservative 2PL locks
+everything from the start, even items used much later (or not at all).</li>
+<li><b>Recoverable and cascadeless schedules guaranteed:</b> strict/rigorous hold X-locks until commit, so no dirty reads or
+cascading rollbacks. Basic conservative 2PL may release locks before commit and still allow cascades.</li>
+<li>Rigorous 2PL gives a clear serialization order (commit order).</li>
+<li>They can be implemented automatically by the DBMS (lock on first access, release at commit).</li></ol>
+<p><b>Does locking always eliminate deadlock? — No.</b> Basic, strict and rigorous 2PL can all deadlock, because a transaction
+holds some locks while waiting for others. Example (both transactions are strict/rigorous 2PL):</p>
+{{sched:strictdead}}
+<p>Only special schemes eliminate deadlock: conservative 2PL, ordering of data items, or timestamp schemes like wait-die / wound-wait.</p>
+</div></details></div>
+
+<!-- ------------------------------------------------ P6 -->
+<h3 id="p6">14.6 Deadlock &amp; Starvation</h3>
+
+<div class="pyq">
+<div class="pyq-h"><span class="chip acc">End-Sem Nov–Dec 2025</span><span class="chip">Q5(a)(b)</span><span class="chip warn">part of 5 marks</span><span class="chip">also ITITC05 Q4(a)</span></div>
+<div class="pyq-q"><p>Discuss the problems of deadlock and starvation in 2PL, and the different approaches to deal with these problems.</p></div>
+<details><summary>Show answer</summary><div class="ans">
+<h4>Deadlock in 2PL</h4>
+<p>In the growing phase a transaction keeps the locks it has and requests more. If T1 holds a lock that T2 needs, while T2 holds
+a lock that T1 needs, both wait for ever. 2PL (and strict/rigorous 2PL) guarantees serializability, <b>not</b> deadlock freedom.</p>
+{{sched:lockq_dead}}
+<h4>Starvation in 2PL</h4>
+<p>A transaction waits indefinitely for a lock while others proceed, e.g. T2 requests X(A) but new S(A) requests keep being
+granted to other transactions (or the same transaction is repeatedly chosen as deadlock victim and restarted).</p>
+{{sched:starve}}
+<h4>Approaches for deadlock</h4>
+<ol><li><b>Prevention</b>
+<ul><li><i>Conservative 2PL</i> — acquire all locks before starting (no hold-and-wait).</li>
+<li><i>Ordering of data items</i> — lock items only in a fixed global order (no circular wait).</li>
+<li><i>Wait–die</i> (non-preemptive): older requester waits; younger requester dies (rolled back, restarted with the same timestamp).</li>
+<li><i>Wound–wait</i> (preemptive): older requester wounds (rolls back) the younger holder; younger requester waits.</li>
+<li><i>No-wait / timeout</i> — abort if the lock is not granted immediately / within a time limit.</li></ul></li>
+<li><b>Detection and recovery</b> — maintain a <b>wait-for graph</b> (Ti → Tj if Ti waits for Tj); a cycle means deadlock.
+Choose a <b>victim</b> with minimum cost (work done, locks held, cascades), roll it back (totally or partially) and restart it.</li></ol>
+{{svg:waitfor}}
+<h4>Approaches for starvation</h4>
+<ul><li>Grant lock requests in <b>first-come-first-served</b> order (a new S request waits behind an earlier waiting X request).</li>
+<li><b>Aging</b> — increase the priority of a transaction the longer it waits.</li>
+<li>Include the <b>number of times rolled back</b> in the victim-selection cost so the same transaction isn’t always chosen.</li>
+<li>Wait-die / wound-wait are starvation-free because a restarted transaction keeps its original (older) timestamp.</li></ul>
+</div></details></div>
+
+<div class="pyq">
+<div class="pyq-h"><span class="chip acc">End-Sem (year not printed)</span><span class="chip">Q5(a)</span><span class="chip warn">4 marks</span></div>
+<div class="pyq-q"><p>Explain deadlock with the help of a suitable schedule example. Analyse the strict two-phase locking (2-PL) protocol with
+respect to deadlock handling.</p></div>
+<details><summary>Show answer</summary><div class="ans">
+<p><b>Deadlock:</b> a state in which each transaction in a set is waiting for a lock held by another transaction of the same
+set, so none can proceed. Necessary conditions: mutual exclusion, hold and wait, no preemption, circular wait.</p>
+{{sched:strictdead}}
+{{svg:deadlock_rag}}
+<p><b>Strict 2PL and deadlock:</b></p>
+<ul><li>Strict 2PL = 2PL + X-locks held until commit/abort. It gives serializable, cascadeless, recoverable schedules but
+<b>does not prevent deadlock</b>. The schedule above obeys strict 2PL yet deadlocks. Holding X-locks longer can even increase
+the chance of deadlock compared with basic 2PL.</li>
+<li>So a strict-2PL system must <b>handle</b> deadlocks separately: by <b>detection</b> (wait-for graph, periodic cycle check,
+victim rollback), by <b>timeouts</b>, or by <b>prevention</b> (wait-die, wound-wait, ordered locking, or making it conservative).</li>
+<li><b>Advantage of strict 2PL in deadlock recovery:</b> because no other transaction could have read the victim’s uncommitted
+writes, rolling back the victim causes <b>no cascading rollbacks</b>; undo just restores before-images. Hence strict 2PL +
+deadlock detection is the combination used by most commercial DBMSs.</li></ul>
+</div></details></div>
+
+<div class="pyq">
+<div class="pyq-h"><span class="chip acc">End-Sem Nov–Dec 2022</span><span class="chip">Q4(b)</span><span class="chip warn">4 marks</span></div>
+<div class="pyq-q"><p>Describe any two techniques for deadlock prevention. Name the concurrency control protocol which generates deadlock-free
+schedules.</p></div>
+<details><summary>Show answer</summary><div class="ans">
+<p>Each transaction Ti is given a timestamp TS(Ti) when it starts (smaller = older). Suppose Ti requests a lock held by Tj.</p>
+<h4>1. Wait–Die (non-preemptive)</h4>
+<ul><li>If TS(Ti) &lt; TS(Tj) (Ti older) → Ti <b>waits</b>.</li>
+<li>Else (Ti younger) → Ti <b>dies</b>: it is rolled back and restarted later with the <b>same</b> timestamp.</li></ul>
+<p>Example: TS(T5)=5, TS(T10)=10. T5 requests an item held by T10 → T5 waits. T10 requests an item held by T5 → T10 dies.</p>
+<h4>2. Wound–Wait (preemptive)</h4>
+<ul><li>If TS(Ti) &lt; TS(Tj) (Ti older) → Ti <b>wounds</b> Tj: Tj is rolled back and the lock is given to Ti.</li>
+<li>Else (Ti younger) → Ti <b>waits</b>.</li></ul>
+<p>Example: T5 requests an item held by T10 → T10 is rolled back. T10 requests an item held by T5 → T10 waits.</p>
+{{svg:waitdie}}
+<p><b>Why no deadlock:</b> in wait-die only older transactions wait for younger ones; in wound-wait only younger wait for older.
+Waits always go in one direction of the timestamp order, so a cycle cannot form. Both avoid starvation because a restarted
+transaction keeps its old timestamp. (Other techniques: conservative 2PL / pre-declaration, ordering of data items, timeouts.)</p>
+<p><b>Deadlock-free protocol:</b> <b>Conservative (static) 2PL</b> — all locks are acquired before execution begins, so no
+transaction ever holds a lock while waiting for another. (The <b>timestamp-ordering protocol</b> and the <b>tree protocol</b> are
+also deadlock-free.)</p>
+</div></details></div>
+
+<!-- ------------------------------------------------ P7 -->
+<h3 id="p7">14.7 Database Recovery</h3>
+
+<div class="pyq">
+<div class="pyq-h"><span class="chip acc">End-Sem Nov–Dec 2024</span><span class="chip">Q5(c)</span><span class="chip warn">5 marks</span></div>
+<div class="pyq-q"><p>Explain the purpose of the checkpoint mechanism with the help of an example. How often should checkpoints be performed? How
+does the frequency of checkpoints affect: (i) system performance when no failure occurs, (ii) the time it takes to recover
+from a system crash, (iii) the time it takes to recover from a media (disk) failure?</p></div>
+<details><summary>Show answer</summary><div class="ans">
+<p><b>Purpose:</b> in log-based recovery, after a crash the recovery manager would otherwise have to scan the <b>whole log</b> to
+decide which transactions to undo and redo. This is slow, and most of the redo work is unnecessary because old committed
+updates are already on disk. A <b>checkpoint</b> bounds the amount of log that must be processed.</p>
+<p><b>Taking a checkpoint:</b> (1) output all log records in main memory to stable storage; (2) output all modified buffer
+blocks to disk; (3) write <code>&lt;checkpoint L&gt;</code> to the log, L = list of active transactions.</p>
+<p><b>Recovery with it:</b> find the last checkpoint; transactions that committed before it are ignored; for transactions in L
+or started after it: redo if a commit record exists, else undo.</p>
+{{svg:checkpoint}}
+<p><b>Example:</b></p>
+<pre><code>&lt;T0 start&gt; &lt;T0, A, 1000, 950&gt; &lt;T0 commit&gt;
+&lt;T1 start&gt; &lt;T1, B, 2000, 2050&gt;
+&lt;checkpoint {T1}&gt;
+&lt;T2 start&gt; &lt;T2, C, 700, 600&gt; &lt;T1 commit&gt;
+&lt;T3 start&gt; &lt;T3, A, 950, 900&gt; &lt;T2 commit&gt;   --- crash ---</code></pre>
+<p>T0 committed before the checkpoint → ignored (A = 950 already on disk). T1 and T2 committed after it → redo (B = 2050,
+C = 600). T3 has no commit → undo (A ← 950). Only the part of the log after the checkpoint (plus T1’s records) is processed.</p>
+<p><b>How often?</b> Often enough that crash-recovery time stays within an acceptable limit, but not so often that the
+overhead hurts normal processing — typically periodically (every few minutes) or after a fixed number of log records.</p>
+<div class="tbl-wrap"><table class="tbl small">
+<tr><th></th><th>More frequent checkpoints</th></tr>
+<tr><td>(i) Performance with no failure</td><td><b>Decreases</b> — each checkpoint forces log records and all dirty pages to disk and briefly halts updates; more checkpoints = more overhead.</td></tr>
+<tr><td>(ii) Recovery time after a system crash</td><td><b>Decreases</b> — less log after the last checkpoint, fewer transactions to redo/undo.</td></tr>
+<tr><td>(iii) Recovery time after a media (disk) failure</td><td><b>Essentially unaffected</b> — media recovery reloads the last archival dump and redoes the log since that dump; its time depends on how often dumps are taken, not on ordinary checkpoints.</td></tr></table></div>
+</div></details></div>
+
+<div class="pyq">
+<div class="pyq-h"><span class="chip acc">End-Sem Nov–Dec 2025</span><span class="chip">Q5(c)</span><span class="chip warn">5 marks</span><span class="chip">also ITITC05 Q4(c)</span></div>
+<div class="pyq-q"><p>Explain the purpose of a system log and the typical entries it contains, and analyze the roles of checkpoints and transaction
+commit points in database recovery, evaluating why both are essential for ensuring efficient and reliable recovery after
+system failures.</p></div>
+<details><summary>Show answer</summary><div class="ans">
+<h4>Purpose of the system log</h4>
+<p>The system log (journal) is a sequential, append-only file on <b>stable storage</b> that records every operation of every
+transaction that affects the database. It lets the recovery manager (a) <b>undo</b> the effects of failed/incomplete
+transactions (atomicity) and (b) <b>redo</b> the effects of committed transactions whose updates were not yet on disk
+(durability). It also serves as an audit trail. Write-Ahead Logging: the log record is written before the data block, and
+the commit record before the transaction is declared committed.</p>
+<h4>Typical entries</h4>
+<div class="tbl-wrap"><table class="tbl small">
+<tr><td><code>&lt;Ti start&gt;</code> / [start_transaction, T]</td><td>transaction started</td></tr>
+<tr><td><code>&lt;Ti, X, old, new&gt;</code> / [write_item, T, X, old, new]</td><td>update — before-image for undo, after-image for redo</td></tr>
+<tr><td>[read_item, T, X]</td><td>read (optional; for auditing / cascading-rollback checks)</td></tr>
+<tr><td><code>&lt;Ti commit&gt;</code></td><td>transaction committed</td></tr>
+<tr><td><code>&lt;Ti abort&gt;</code></td><td>transaction aborted / rolled back</td></tr>
+<tr><td><code>&lt;checkpoint L&gt;</code></td><td>checkpoint with list of active transactions</td></tr></table></div>
+<h4>Role of the commit point</h4>
+<p>A transaction reaches its <b>commit point</b> when all its operations have executed and been recorded in the log, and its
+<code>&lt;Ti commit&gt;</code> record is force-written to stable storage. It is the boundary that tells recovery <b>what</b> to do:
+transactions past their commit point are <b>redone</b> (their effects must persist); transactions that had not reached it are
+<b>undone</b> (or ignored with deferred update). Without commit points, recovery could not distinguish completed work from
+partial work — reliability would be lost.</p>
+<h4>Role of checkpoints</h4>
+<p>A checkpoint forces log records and dirty buffers to disk and writes <code>&lt;checkpoint L&gt;</code>. During recovery only the
+log after the last checkpoint (plus active transactions in L) is examined; transactions committed before it are already on disk.
+It tells recovery <b>where to start</b> and makes recovery <b>fast</b>.</p>
+<h4>Why both are essential</h4>
+<ul><li><b>Commit points ensure correctness/reliability:</b> they decide undo vs redo for each transaction, guaranteeing atomicity and durability.</li>
+<li><b>Checkpoints ensure efficiency:</b> they limit how much log must be scanned and how much redo is done, so recovery time is short and predictable.</li>
+<li>Without commit records, a checkpoint could not tell what to redo or undo; without checkpoints, commit records would still give a correct recovery but it would have to process the entire log — very slow.</li></ul>
+<p class="answer-line">Together: the log provides the information, commit points decide what to undo/redo, and checkpoints decide from where — giving recovery that is both reliable and efficient.</p>
+</div></details></div>
+
+<div class="pyq">
+<div class="pyq-h"><span class="chip acc">End-Sem 2026 Summer</span><span class="chip">Q5(b)(ii)</span><span class="chip warn">part of 5 marks</span></div>
+<div class="pyq-q"><p>Explain checkpointing and log-based recovery.</p></div>
+<details><summary>Show answer</summary><div class="ans">
+<h4>Log-based recovery</h4>
+<p>The DBMS keeps a log on stable storage with records <code>&lt;Ti start&gt;</code>, <code>&lt;Ti, X, V<sub>old</sub>, V<sub>new</sub>&gt;</code>,
+<code>&lt;Ti commit&gt;</code>, <code>&lt;Ti abort&gt;</code>, following Write-Ahead Logging (log before data).</p>
+<ul><li><b>Deferred modification</b> (NO-UNDO/REDO): updates reach the database only after commit. Recovery: redo every transaction with both start and commit records; ignore the rest.</li>
+<li><b>Immediate modification</b> (UNDO/REDO): updates may reach the database before commit. Recovery: <b>undo</b> (backwards, restore old values) every transaction with start but no commit; <b>redo</b> (forwards, new values) every transaction with start and commit.</li>
+<li>Undo/redo are idempotent, so a crash during recovery is harmless.</li></ul>
+<p>Example (immediate): log <code>&lt;T0 start&gt; &lt;T0,A,1000,950&gt; &lt;T0,B,2000,2050&gt; &lt;T0 commit&gt; &lt;T1 start&gt; &lt;T1,C,700,600&gt;</code>
+— crash. Redo T0 (A = 950, B = 2050), undo T1 (C = 700).</p>
+<h4>Checkpointing</h4>
+<p>To avoid scanning the entire log, the system periodically (1) flushes log records to stable storage, (2) flushes all dirty
+buffer blocks to disk, (3) writes <code>&lt;checkpoint L&gt;</code> (L = active transactions). After a crash, recovery begins from
+the last checkpoint: transactions committed before it are ignored; those in L or started later are redone if committed and
+undone otherwise.</p>
+{{svg:checkpoint}}
+<p>Checkpointing trades a small overhead during normal operation for much faster recovery after a crash.</p>
+</div></details></div>
+
+<div class="pyq">
+<div class="pyq-h"><span class="chip acc">End-Sem (year not printed)</span><span class="chip">Q5(b)</span><span class="chip warn">2 + 2 marks</span></div>
+<div class="pyq-q"><p>Consider the following log sequence of two transactions on a bank account (B) with an initial balance 12,000 that transfers
+2000 to a mortgage (M) payment and then applies 5% interest.<br>
+1. &lt;T1, start&gt; 2. &lt;T1, B, 12000, 10000&gt; 3. &lt;T1, M, 0, 2000&gt; 4. &lt;T1, commit&gt; 5. &lt;T2, start&gt;
+6. &lt;T2, B, 10000, 10500&gt; 7. &lt;T2, commit&gt;<br>
+What will happen to these transactions if the database system crashes (i) just before log record 7 is written, (ii) just
+before log record 4 is written? Justify your answer in each case.</p></div>
+<details><summary>Show answer</summary><div class="ans">
+<p>The log records contain both old and new values ⇒ <b>immediate database modification</b> (UNDO/REDO). Recovery rule:
+<b>redo</b> Ti if the log has both <code>&lt;Ti start&gt;</code> and <code>&lt;Ti commit&gt;</code>; <b>undo</b> Ti if it has
+<code>&lt;Ti start&gt;</code> but no <code>&lt;Ti commit&gt;</code>. Undo restores old values scanning backwards; redo applies new values
+scanning forwards.</p>
+<h4>(i) Crash just before record 7 — log contains records 1–6</h4>
+<ul><li><b>T1:</b> start (1) and commit (4) present → T1 is committed → <b>REDO T1</b>: B = 10000, M = 2000.</li>
+<li><b>T2:</b> start (5) present but no commit → T2 is incomplete; its write of B = 10500 may already be on disk →
+<b>UNDO T2</b>: B ← 10000 (old value from record 6).</li></ul>
+<p><b>After recovery: B = 10,000, M = 2,000.</b> The transfer is preserved (durability); the interest is not applied (atomicity).
+T2 must be resubmitted. (Order: undo T2 then redo T1, or redo-then-undo — the result is the same.)</p>
+<h4>(ii) Crash just before record 4 — log contains records 1–3</h4>
+<ul><li><b>T1:</b> start present, no commit → <b>UNDO T1</b>, backwards: record 3 → M ← 0; record 2 → B ← 12000.</li>
+<li><b>T2:</b> no log records at all → it never started; nothing to do.</li></ul>
+<p><b>After recovery: B = 12,000, M = 0</b> — the database is as if neither transaction ran. T1 (and then T2) must be re-executed.</p>
+<p class="small muted">If deferred modification were used (only new values logged), the outcome is the same: in (i) redo T1 and ignore T2;
+in (ii) ignore T1 — nothing was written to the database before commit.</p>
+</div></details></div>
+
+<div class="pyq">
+<div class="pyq-h"><span class="chip acc">End-Sem (year not printed)</span><span class="chip">Q5(c)</span><span class="chip warn">4 marks</span></div>
+<div class="pyq-q"><p>Illustrate shadow paging with the help of a suitable diagram.</p></div>
+<details><summary>Show answer</summary><div class="ans">
+<p><b>Shadow paging</b> is a recovery technique that does not need a log (in a single-user environment). The database is divided
+into fixed-size pages; a <b>page table</b> with n entries maps the i-th page to its disk block.</p>
+{{svg:shadow}}
+<ol><li>When a transaction starts, two page tables exist: the <b>shadow page table</b> (saved on disk, never changed during the
+transaction) and the <b>current page table</b> (a copy, kept in memory). A fixed disk location, the db-pointer, points to the shadow table.</li>
+<li>When the transaction writes page i for the first time, the page is copied to a <b>free disk block</b>, the current page table
+entry i is changed to point to the copy, and the update is made on the copy. The shadow table still points to the old page
+(in the figure, pages 2 and 5 were modified).</li>
+<li><b>Commit:</b> flush the modified pages; write the current page table to disk; then <b>atomically switch the db-pointer</b> to
+the current page table, which becomes the new shadow table.</li>
+<li><b>Failure before commit:</b> the db-pointer still points to the shadow page table, which describes the database before the
+transaction. Simply discard the current table and free the new pages. <b>No undo, no redo.</b></li></ol>
+<p><b>Advantages:</b> no log-record overhead; very fast recovery. <b>Disadvantages:</b> commit overhead (many blocks written),
+data fragmentation, garbage collection of old pages, difficult to extend to concurrent transactions.</p>
+</div></details></div>
+
+<div class="pyq">
+<div class="pyq-h"><span class="chip acc">End-Sem Nov–Dec 2022</span><span class="chip">Q5(a)</span><span class="chip warn">4 marks</span></div>
+<div class="pyq-q"><p>Consider the following schedule of three transactions: T1: R(A); T2: R(B); T3: R(C); T1: W(A); T2: W(A); T3: W(B);
+T2: W(B); T1: W(C). Assume that each write operation increases the value by 50. Initially A = 500 and B = 300. Create the log
+file for this schedule using deferred and immediate log-based recovery systems.</p></div>
+<details><summary>Show answer</summary><div class="ans">
+{{sched:p22_log}}
+<p><b>Assumptions</b> (missing data, as allowed by the paper):</p>
+<ul><li>Initial value of C is not given; assume <b>C = 200</b>.</li>
+<li>“Each write increases the value by 50” is applied to the latest value of the item: A: 500 → 550 (T1) → 600 (T2);
+B: 300 → 350 (T3) → 400 (T2); C: 200 → 250 (T1).</li>
+<li>Commit operations are not shown. Assume all transactions commit after the last operation in the order <b>T3, T1, T2</b>. T2
+overwrote values written by T1 (A) and by T3 (B), so it should commit last, as strict 2PL would force. This keeps the deferred
+writes consistent.</li>
+<li><code>&lt;Ti start&gt;</code> is written just before Ti’s first operation.</li></ul>
+<div class="side">
+<div><p class="center"><b>Deferred modification log</b><br><span class="small muted">(&lt;Ti, X, new value&gt;)</span></p>
+<pre><code>&lt;T1 start&gt;
+&lt;T2 start&gt;
+&lt;T3 start&gt;
+&lt;T1, A, 550&gt;
+&lt;T2, A, 600&gt;
+&lt;T3, B, 350&gt;
+&lt;T2, B, 400&gt;
+&lt;T1, C, 250&gt;
+&lt;T3 commit&gt;
+&lt;T1 commit&gt;
+&lt;T2 commit&gt;</code></pre></div>
+<div><p class="center"><b>Immediate modification log</b><br><span class="small muted">(&lt;Ti, X, old value, new value&gt;)</span></p>
+<pre><code>&lt;T1 start&gt;
+&lt;T2 start&gt;
+&lt;T3 start&gt;
+&lt;T1, A, 500, 550&gt;
+&lt;T2, A, 550, 600&gt;
+&lt;T3, B, 300, 350&gt;
+&lt;T2, B, 350, 400&gt;
+&lt;T1, C, 200, 250&gt;
+&lt;T3 commit&gt;
+&lt;T1 commit&gt;
+&lt;T2 commit&gt;</code></pre></div></div>
+<h4>How the two logs are used</h4>
+<ul><li><b>Deferred:</b> the database is not touched until a transaction commits. At <code>&lt;T3 commit&gt;</code> B = 350 is written;
+at <code>&lt;T1 commit&gt;</code> A = 550, C = 250; at <code>&lt;T2 commit&gt;</code> A = 600, B = 400. After a crash: redo committed
+transactions, ignore uncommitted ones (no undo).</li>
+<li><b>Immediate:</b> each write goes to the database (after its log record) at once. After a crash: undo uncommitted transactions
+(using old values, backwards), redo committed ones (new values, forwards).</li></ul>
+<p><b>Example — crash just after <code>&lt;T1 commit&gt;</code>:</b> T3, T1 committed; T2 not.</p>
+<ul><li>Deferred: redo T3 (B = 350), redo T1 (A = 550, C = 250); ignore T2 ⇒ A = 550, B = 350, C = 250.</li>
+<li>Immediate: undo T2 backwards (B ← 350, A ← 550), redo T3 (B = 350) and T1 (A = 550, C = 250) ⇒ A = 550, B = 350, C = 250.</li></ul>
+<p>Final values if no failure occurs: A = 600, B = 400, C = 250.</p>
+<p class="small muted">Note: this schedule is not conflict serializable (r<sub>2</sub>(B) before w<sub>3</sub>(B) gives T2 → T3, and
+w<sub>3</sub>(B) before w<sub>2</sub>(B) gives T3 → T2), so a locking DBMS would not actually allow it. The question only asks for the log format.</p>
+</div></details></div>
+
+<div class="pyq">
+<div class="pyq-h"><span class="chip acc">End-Sem Nov–Dec 2022</span><span class="chip">Q5(b)</span><span class="chip warn">4 marks</span></div>
+<div class="pyq-q"><p>What is meant by shadow paging? Explain its advantages and disadvantages.</p></div>
+<details><summary>Show answer</summary><div class="ans">
+<p><b>Shadow paging</b> is a NO-UNDO/NO-REDO recovery technique. The database consists of fixed-size pages reached through a page
+table. During a transaction two page tables are maintained: the <b>shadow page table</b>, which is stored on disk and never modified,
+and the <b>current page table</b>, used by the transaction. When a page is modified for the first time it is written to a new disk
+block and only the current table is updated to point to it. To <b>commit</b>, the modified pages and the current page table are
+written to disk and the db-pointer is switched atomically to the current table. If the system <b>fails</b> before that, the shadow
+table still describes the old consistent database, so nothing needs to be undone or redone.</p>
+{{svg:shadow}}
+<div class="tbl-wrap"><table class="tbl small"><tr><th>Advantages</th><th>Disadvantages</th></tr>
+<tr><td><ul><li>No overhead of writing and maintaining log records (single-user)</li>
+<li>Recovery is extremely fast — no undo, no redo, no log scan</li>
+<li>Simple concept; a crash just means “keep using the shadow table”</li></ul></td>
+<td><ul><li><b>Commit overhead</b> — must flush all modified pages and the entire page table at each commit</li>
+<li><b>Data fragmentation</b> — updated pages move, so related pages are no longer contiguous (loss of locality)</li>
+<li><b>Garbage collection</b> — old page versions become unreachable garbage and must be reclaimed</li>
+<li>Difficult to extend to <b>concurrent transactions</b> (needs logging anyway)</li>
+<li>Large page tables are costly to copy</li></ul></td></tr></table></div>
+</div></details></div>
+
+<div class="pyq">
+<div class="pyq-h"><span class="chip acc">End-Sem Nov–Dec 2022</span><span class="chip">Q5(c)</span><span class="chip warn">4 marks</span></div>
+<div class="pyq-q"><p>What are checkpoints? Explain the database recovery mechanism using checkpoints.</p></div>
+<details><summary>Show answer</summary><div class="ans">
+<p><b>Checkpoint:</b> a point at which the DBMS writes all log records in memory and all modified buffer blocks to disk, and then
+writes a <code>&lt;checkpoint L&gt;</code> record (L = transactions active at that moment). Everything committed before the checkpoint
+is guaranteed to be on disk, so recovery need not look further back. Without checkpoints, the entire log would have to be scanned
+and many already-written updates would be needlessly redone.</p>
+<p><b>Recovery mechanism (immediate modification):</b></p>
+<ol><li>Scan the log backwards to the last <code>&lt;checkpoint L&gt;</code>.</li>
+<li>Undo-list = transactions in L + those starting after the checkpoint without a commit/abort record; redo-list = those in L or
+started later that have a commit record.</li>
+<li><b>Undo</b> all transactions in the undo-list (scan backwards, restore old values, write <code>&lt;Ti abort&gt;</code>).</li>
+<li><b>Redo</b> all transactions in the redo-list (scan forwards from the checkpoint, apply new values).</li>
+<li>Transactions that committed before the checkpoint are ignored.</li></ol>
+{{svg:checkpoint}}
+<p>In the figure: T1 → ignore; T2, T3 → redo; T4, T5 → undo. (With deferred modification only the redo step is needed.)</p>
+</div></details></div>
+
+<!-- ------------------------------------------------ P8 -->
+<h3 id="p8">14.8 Database Security</h3>
+
+<div class="pyq">
+<div class="pyq-h"><span class="chip acc">End-Sem Nov–Dec 2025</span><span class="chip">Q1(b) (first part)</span><span class="chip warn">part of 5 marks</span></div>
+<div class="pyq-q"><p>Discuss the terms “security of a database” and “integrity of a database” with the help of appropriate examples.
+<span class="small muted">(The second part of this question — relational vs hierarchical databases — belongs to Unit 1.)</span></p></div>
+<details><summary>Show answer</summary><div class="ans">
+<p><b>Security of a database</b> means protecting the data against <b>unauthorised</b> access, disclosure, modification or
+destruction. It answers “<i>who is allowed to do what?</i>” and is enforced by authentication, authorization (GRANT/REVOKE, roles,
+views), encryption and auditing. It covers confidentiality, integrity and availability (CIA).<br>
+<i>Example:</i> in a university database, a student can view only their own marks (a view + SELECT privilege), only faculty have
+UPDATE on the marks column, and salaries are visible only to the accounts role. An outsider trying SQL injection on the login page
+must fail.</p>
+<p><b>Integrity of a database</b> means the data is <b>accurate, valid and consistent</b> — it obeys the rules of the real world. It
+answers “<i>is this change correct?</i>” and protects against accidental errors by <i>authorised</i> users. It is enforced by integrity
+constraints (domain, NOT NULL, UNIQUE, primary key, foreign key/referential integrity, CHECK), triggers, and ACID transactions.<br>
+<i>Example:</i> <code>CHECK (marks BETWEEN 0 AND 100)</code> rejects 105 entered by a teacher by mistake; a foreign key prevents enrolling a
+student roll number that doesn’t exist; a transfer is atomic so A + B stays constant.</p>
+<div class="tbl-wrap"><table class="tbl small"><tr><th>Security</th><th>Integrity</th></tr>
+<tr><td>Protects against unauthorised / malicious users</td><td>Protects against invalid data from authorised users and failures</td></tr>
+<tr><td>Authentication, privileges, encryption, auditing</td><td>Constraints, triggers, transactions, concurrency control</td></tr>
+<tr><td>“Is the user allowed?”</td><td>“Is the data correct?”</td></tr></table></div>
+</div></details></div>
+
+<div class="pyq">
+<div class="pyq-h"><span class="chip acc">End-Sem (year not printed)</span><span class="chip">Q1(b)(iv)</span><span class="chip warn">part of 4 marks</span></div>
+<div class="pyq-q"><p>Briefly describe with the help of an example: <b>GRANT and REVOKE</b>.</p></div>
+<details><summary>Show answer</summary><div class="ans">
+<p>GRANT and REVOKE are SQL <b>DCL</b> commands implementing <b>discretionary access control</b>.</p>
+<p><b>GRANT</b> gives privileges (SELECT, INSERT, UPDATE, DELETE, REFERENCES, ALL) on an object to users or roles:</p>
+<pre><code>GRANT privileges ON object TO user | role | PUBLIC [WITH GRANT OPTION];
+GRANT SELECT, INSERT ON Student TO U1;
+GRANT UPDATE (marks) ON Result TO teacher WITH GRANT OPTION;</code></pre>
+<p>WITH GRANT OPTION allows the receiver to pass the privilege on to others.</p>
+<p><b>REVOKE</b> withdraws previously granted privileges:</p>
+<pre><code>REVOKE privileges ON object FROM user | role [CASCADE | RESTRICT];
+REVOKE INSERT ON Student FROM U1;
+REVOKE UPDATE (marks) ON Result FROM teacher CASCADE;</code></pre>
+<p><b>CASCADE</b> also revokes the privilege from everyone who received it through that user (if they have no other path from the
+owner); <b>RESTRICT</b> refuses the revoke if such dependent grants exist.</p>
+{{svg:authgraph}}
+</div></details></div>
+
+<div class="box tip"><div class="box-t">Likely security questions (no PYQ yet) — where to read the answer</div>
+<ul><li>Explain DAC and MAC; Bell–LaPadula model → 12.6, 12.7</li>
+<li>What is SQL injection? How to prevent it? → 12.9</li>
+<li>Role of DBA in database security; threats and countermeasures → 12.3, 12.4</li>
+<li>Explain role-based access control / views as a security mechanism → 12.6, 12.8</li>
+<li>Statistical database security / inference control; encryption; audit trail → 12.10, 12.11</li></ul></div>
+

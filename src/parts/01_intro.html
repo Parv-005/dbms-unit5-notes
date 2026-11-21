@@ -1,0 +1,277 @@
+<header class="hero">
+  <h1>Unit 5 — Transactions, Concurrency Control, Recovery &amp; Security</h1>
+  <p class="sub">Database Management System · ITITC302 / INITC302 · Complete self-study notes with topic-wise solved PYQs</p>
+  <div class="chips">
+    <span class="chip acc">Transactions &amp; ACID</span><span class="chip acc">States</span>
+    <span class="chip acc">Concurrent vs Parallel</span><span class="chip warn">Concurrency problems</span>
+    <span class="chip warn">Schedules &amp; Serializability</span><span class="chip warn">Recoverability</span>
+    <span class="chip good">Locking: 2PL · Strict · Rigorous · Conservative</span><span class="chip good">Deadlocks</span>
+    <span class="chip bad">Database Recovery</span><span class="chip pur">Database Security</span><span class="chip">Solved PYQs</span>
+  </div>
+</header>
+
+<h2 id="s0"><span class="num">0</span>How to use these notes</h2>
+<p>These notes are written for someone reading Unit 5 <b>for the first time</b>. Read them top to bottom; every topic
+builds on the previous one. Each topic follows the same pattern:</p>
+<ol>
+  <li><b>Intuition</b> — why the idea exists, in plain words.</li>
+  <li><b>Definition</b> — the exam-ready wording (blue boxes).</li>
+  <li><b>Worked example</b> — with real numbers / schedules (green boxes).</li>
+  <li><b>Common mistakes</b> (red boxes) and <b>exam tips</b> (purple boxes).</li>
+</ol>
+<div class="grid2">
+  <div class="box def"><div class="box-t">Definition</div>Exam-ready definitions look like this.</div>
+  <div class="box ex"><div class="box-t">Example</div>Worked examples look like this.</div>
+  <div class="box warn"><div class="box-t">Common mistake</div>Traps that cost marks.</div>
+  <div class="box exam"><div class="box-t">Exam tip</div>How to write the answer for full marks.</div>
+  <div class="box beyond"><div class="box-t">Beyond syllabus (but important)</div>Extra topics from the reference book (Korth) that PYQs touch or that make the core topics clearer.</div>
+  <div class="box note"><div class="box-t">Correction / source note</div>Places where the class notes or the PDF contain a mistake, and the correct version.</div>
+</div>
+<p>Notation used everywhere: <code>r<sub>1</sub>(X)</code> or <code>R1(X)</code> = transaction T1 reads item X;
+<code>w<sub>2</sub>(Y)</code> = T2 writes Y; <code>c<sub>1</sub></code> = T1 commits. In schedule tables, time flows
+<b>downwards</b> and each transaction has its own column.</p>
+<p>The <b>last section</b> contains every Unit-5 question from the previous year papers, grouped by topic, each with a
+complete exam-style answer (click “Show answer”, or use the <b>▾ Answers</b> button in the sidebar to open all).</p>
+
+{{svg:roadmap}}
+
+<!-- ============================================================ 1 -->
+<h2 id="s1"><span class="num">1</span>Introduction to Transactions</h2>
+
+<h3 id="s1-1">1.1 What is a transaction?</h3>
+<p>Think of withdrawing money at an ATM or transferring money with UPI. To you it is <i>one</i> action
+(“send ₹100 to my friend”), but inside the database it is <i>several</i> steps: read your balance, subtract 100, write
+it back, read your friend’s balance, add 100, write it back. If the system stops half-way, you lose ₹100 and your friend
+gets nothing. A <b>transaction</b> is the DBMS’s way of saying: <i>“treat all these steps as one single unit — either
+all of them happen, or none of them happen.”</i></p>
+
+<div class="box def"><div class="box-t">Definition — Transaction</div>
+<ul>
+<li>A <b>transaction</b> is a collection of operations that together form a <b>single logical unit of work</b>.</li>
+<li>It is a unit of program execution that <b>accesses and possibly updates</b> various data items.</li>
+<li>It is a logical unit of database processing that includes <b>one or more database access operations</b>
+(read, insert, delete, update).</li>
+</ul>
+<p>Example: <i>withdrawal + deposit</i> of a money transfer is <b>one</b> transaction (1 unit of work).</p>
+</div>
+
+<p>A transaction usually starts with <code>begin transaction</code> and ends with <code>end transaction</code>
+(either a <b>commit</b> or a <b>rollback/abort</b>). Everything in between is the transaction.</p>
+
+<h3 id="s1-2">1.2 The two basic operations: read(X) and write(X)</h3>
+<p>A transaction accesses data using two operations:</p>
+<ol>
+<li><b>read(X)</b> — reads the value of data item X from the database and stores it in a <b>buffer / local variable in
+main memory</b>.</li>
+<li><b>write(X)</b> — writes the value back <b>from the buffer to the database</b>.</li>
+</ol>
+<p>All calculations (like <code>X = X − 500</code>) happen only on the <b>local copy</b> in memory. The database copy changes
+only when <code>write(X)</code> is executed.</p>
+
+{{svg:buffer}}
+
+<div class="box ex"><div class="box-t">Example from class — local copy vs database copy</div>
+<p>Database has A = 500. Transaction executes <code>read(A)</code> → local A = 500. Then <code>A = A − 100</code> → local
+A = 400. If we now look at the database, A is <b>still 500</b>, because the change happened only in local memory.
+Only after <code>write(A)</code> does the database get 400.</p>
+</div>
+
+<div class="box ex"><div class="box-t">Example — a debit transaction (X = 4000)</div>
+<p>Operations: <code>R(X); X = X − 500; W(X)</code></p>
+{{sched:debit}}
+<p>Now suppose the hardware, software or power fails <b>after step 2 but before step 3</b>. The 500 was subtracted only
+in the (volatile) buffer, so X in the database remains <b>4000</b> while the program thinks money was debited.
+Worse, in a transfer, money could be deducted from one account and never added to the other. This is why we need
+<b>commit</b> and <b>rollback</b>.</p>
+</div>
+
+<div class="box note"><div class="box-t">Correction (PDF p. 109)</div>
+The PDF says “X’s value will remain <b>400</b> in the database”. It should be <b>4000</b> (the original value), because
+the failed transaction never wrote 3500 back.</div>
+
+<div class="box beyond"><div class="box-t">Beyond syllabus — read/write vs input/output (needed for Recovery)</div>
+<p>Korth distinguishes two levels:</p>
+<ul>
+<li><code>read(X)</code> / <code>write(X)</code>: move X between the <b>transaction’s local variable</b> and the <b>buffer block</b> in memory.</li>
+<li><code>input(B)</code> / <code>output(B)</code>: move a whole <b>block</b> B between <b>disk</b> and the memory buffer.</li>
+</ul>
+<p>So after <code>write(X)</code> the new value may still be only in memory; the buffer manager decides when to
+<code>output</code> it. A crash at that moment loses it. This gap is exactly what the <b>log</b> in Section 11 protects.</p>
+</div>
+
+<h3 id="s1-3">1.3 Commit and Rollback</h3>
+<div class="box def"><div class="box-t">Definition</div>
+<ul>
+<li><b>Commit</b> — saves the work done by the transaction <b>permanently</b> in the database. After commit, the changes
+are visible to others and can no longer be undone by rollback.</li>
+<li><b>Rollback (Abort)</b> — <b>undoes</b> all the work done by the transaction, restoring the database to the state it was
+in before the transaction started.</li>
+</ul></div>
+
+<p>In SQL:</p>
+<pre><code>START TRANSACTION;                 -- or BEGIN
+UPDATE account SET bal = bal - 100 WHERE acc_no = 'A';
+UPDATE account SET bal = bal + 100 WHERE acc_no = 'B';
+COMMIT;                            -- make both changes permanent
+-- if anything goes wrong instead:  ROLLBACK;
+-- SAVEPOINT s1;  ...  ROLLBACK TO s1;   (partial rollback, beyond syllabus)</code></pre>
+
+<h3 id="s1-4">1.4 Why do we need transactions? The two big problems</h3>
+<p>A DBMS must deal with two kinds of trouble:</p>
+<div class="grid2">
+<div class="box warn"><div class="box-t">Problem 1 — Failures</div>
+Hardware crash, power failure, software bug, disk failure, a transaction error (e.g. division by zero, insufficient
+balance). The database can be left half-updated. <br><b>Solved by:</b> the <b>recovery system</b> (logs, undo/redo,
+checkpoints, shadow paging) → guarantees <b>Atomicity &amp; Durability</b>.</div>
+<div class="box warn"><div class="box-t">Problem 2 — Concurrent execution</div>
+Many users run transactions at the same time on the same data. Their operations interleave and can interfere
+(lost updates, dirty reads …). <br><b>Solved by:</b> the <b>concurrency-control system</b> (locking, 2PL, timestamps)
+→ guarantees <b>Isolation</b> (and hence consistency).</div>
+</div>
+<p>The whole unit is about these two problems. The rules a transaction must obey are summarised by <b>ACID</b>.</p>
+
+<!-- ============================================================ 2 -->
+<h2 id="s2"><span class="num">2</span>ACID Properties</h2>
+<p>Every transaction must have four properties, called <b>ACID</b>, to keep the database correct (consistent) before and
+after the transaction. Because of ACID, a transaction is always either fully completed or not done at all.</p>
+
+{{svg:acid}}
+
+<h3 id="s2-1">2.1 Atomicity — “all or nothing”</h3>
+<div class="box def"><div class="box-t">Definition</div>
+Either <b>all</b> operations of the transaction are reflected in the database, or <b>none</b> are. There is no midway;
+a transaction cannot happen partially. If any operation fails, the entire transaction is rolled back.</div>
+<p>Atomicity involves two operations:</p>
+<ul><li><b>Abort</b>: if a transaction aborts, none of its changes are visible.</li>
+<li><b>Commit</b>: if a transaction commits, all of its changes are visible.</li></ul>
+<div class="box ex"><div class="box-t">Example — transfer ₹100 from A (₹600) to B (₹300)</div>
+{{sched:transfer}}
+<p>If the transaction fails <b>after <code>write(A)</code> but before <code>write(B)</code></b>, ₹100 is deducted
+from A but never added to B: A = 500, B = 300, total = 800. ₹100 has vanished — an <b>inconsistent</b> state. Atomicity
+guarantees that the DBMS will <b>undo</b> the write to A (A goes back to 600), so the database looks as if the
+transaction never ran.</p>
+<p><b>Who ensures it?</b> The <b>recovery manager</b>, using the log to undo incomplete transactions.</p>
+</div>
+
+<h3 id="s2-2">2.2 Consistency — “valid state to valid state”</h3>
+<div class="box def"><div class="box-t">Definition</div>
+<ul><li>Execution of a transaction in isolation must preserve all integrity constraints, so the database is consistent
+before <b>and</b> after the transaction.</li>
+<li>A transaction transforms the database from one <b>consistent state</b> to another consistent state; it leaves the database
+either in its prior stable state or a new stable state.</li></ul></div>
+<div class="box ex"><div class="box-t">Example</div>
+<p>Consistency rule for the transfer: <b>A + B must stay the same</b>.</p>
+<table class="tbl small center"><tr><th></th><th>A</th><th>B</th><th>A + B</th></tr>
+<tr><td>Before T</td><td>600</td><td>300</td><td>900</td></tr>
+<tr><td>After T</td><td>500</td><td>400</td><td>900 ✔</td></tr>
+<tr><td>If T fails half-way (no atomicity)</td><td>500</td><td>300</td><td class="n">800 ✗</td></tr></table>
+<p>Class example: A = 5000, B = 3000 (total 8000); transfer 1000 from A to B → A = 4000, B = 4000, total still 8000 →
+consistency maintained.</p>
+<p>Other examples of consistency rules: balance ≥ 0, roll number unique (primary key), every enrolment refers to an
+existing student (foreign key).</p>
+</div>
+<p><b>Who ensures it?</b> Mainly the <b>application programmer</b> (writing a correct transaction) together with the DBMS
+checking <b>integrity constraints</b>. Atomicity and isolation help: if every transaction is correct on its own,
+running them atomically and in isolation keeps the database consistent.</p>
+
+<h3 id="s2-3">2.3 Isolation — “as if alone”</h3>
+<div class="box def"><div class="box-t">Definition</div>
+<ul><li>Even though many transactions execute <b>concurrently</b>, each transaction must behave as if it were executing
+alone — the result must be the same as some <b>valid serial order</b>.</li>
+<li>Intermediate (uncommitted) results of a transaction must not be visible to other transactions. If T1 is using data
+item X, then T2 should not see X in a half-updated state until T1 ends.</li></ul></div>
+<p>Another everyday example: two people try to book the <b>last seat</b> on a train at the same moment. Without isolation both transactions could read “1 seat free” and both book it; with isolation the DBMS orders them so only one gets the seat.</p>
+<div class="box ex"><div class="box-t">Example from class — Alice and Bob</div>
+<p>T1: Alice transfers ₹500 to Bob. &nbsp; T2: Bob checks the total balance.</p>
+<table class="tbl small"><tr><th>T1 (Alice → Bob)</th><th>T2 (Bob checks)</th></tr>
+<tr><td>① A = A − 500 (written)</td><td></td></tr>
+<tr><td></td><td>③ read(A) — sees money already gone from A but not yet in Bob’s account</td></tr>
+<tr><td>② … add 500 to B, commit</td><td></td></tr></table>
+<p>If T1 completes first and then T2 runs (serial order), Bob sees the correct total. But if T2 reads <b>in the middle</b>
+of T1 (before T1 commits), T2 sees a wrong value. Isolation prevents this.</p>
+</div>
+<p><b>Who ensures it?</b> The <b>concurrency-control subsystem</b> of the DBMS (locking protocols, timestamps).</p>
+
+<h3 id="s2-4">2.4 Durability — “committed means permanent”</h3>
+<div class="box def"><div class="box-t">Definition</div>
+After a transaction <b>completes successfully (commits)</b>, the changes it made to the database <b>persist</b>, even if
+there is a system failure immediately afterwards. They cannot be lost by a faulty later transaction or by a crash.
+Later transactions see (and build on) these changes.</div>
+<div class="box ex"><div class="box-t">Example</div>
+You get the message “₹100 transferred successfully” and one second later the bank’s server crashes. When it restarts,
+your transfer must still be there. The recovery system <b>redoes</b> committed changes from the log if they had not yet
+reached the disk.</div>
+<p><b>Who ensures it?</b> The <b>recovery subsystem</b> (log on stable storage + redo).</p>
+
+<h3 id="s2-5">2.5 Summary table</h3>
+<div class="tbl-wrap"><table class="tbl">
+<tr><th>Property</th><th>Meaning in one line</th><th>What goes wrong without it</th><th>Ensured by</th></tr>
+<tr><td><b>A</b>tomicity</td><td>All operations or none</td><td>Half-done transfer; money vanishes</td><td>Recovery manager (undo)</td></tr>
+<tr><td><b>C</b>onsistency</td><td>Constraints hold before &amp; after</td><td>Totals don’t match, invalid data</td><td>Programmer + integrity constraints</td></tr>
+<tr><td><b>I</b>solation</td><td>Concurrent ≡ some serial order</td><td>Lost update, dirty read, wrong totals</td><td>Concurrency control (locks)</td></tr>
+<tr><td><b>D</b>urability</td><td>Committed changes survive crashes</td><td>“Successful” transfer disappears after crash</td><td>Recovery manager (redo, stable log)</td></tr>
+</table></div>
+
+<div class="box beyond"><div class="box-t">Why a plain file system cannot give ACID (asked in mid-sem PYQ)</div>
+<p>A program that updates ordinary files has no transaction manager: if it crashes after updating one file but not
+another, there is <b>no automatic undo</b> (no atomicity); there is <b>no log</b> to redo lost writes (no durability);
+two programs editing the same file at once can overwrite each other (no isolation); and constraints like “balance ≥ 0”
+must be coded by hand in every program (weak consistency). For banking / payments this means lost money, duplicated
+payments and corrupted data. A DBMS solves all of these with its recovery and concurrency-control components.</p></div>
+
+<div class="box exam"><div class="box-t">Exam tip</div>
+For “Explain ACID properties” (usually 4–5 marks): draw the 4-box diagram, write a 2-line definition of each property,
+and use <b>one running example</b> (transfer ₹100 from A = 600 to B = 300) showing what goes wrong without each property.
+Mention <b>which DBMS component</b> ensures each property — examiners love that line.</div>
+
+<!-- ============================================================ 3 -->
+<h2 id="s3"><span class="num">3</span>Transaction States</h2>
+<p>During its lifetime a transaction moves through several states. At any moment it is in <b>exactly one</b> of them.</p>
+
+{{svg:states}}
+
+<h3 id="s3-1">3.1 The five states</h3>
+<ol>
+<li><b>Active</b> — the first state of every transaction. The transaction is executing its operations (reading /
+writing). E.g. inserting, deleting or updating records happens here, but nothing is permanently saved yet.
+From Active the transaction can go to <b>Partially Committed</b> or <b>Failed</b>.</li>
+<li><b>Partially Committed</b> — the transaction has executed its <b>final (last) statement</b>, but its changes are
+still not confirmed permanently (they may still be only in main-memory buffers). E.g. in a “calculate total marks”
+transaction, the final display of the total is done in this state. A failure here can still send it to
+<b>Failed</b>.</li>
+<li><b>Committed</b> — the transaction has completed successfully and all its effects are <b>permanently saved</b>
+in the database (the commit record is in the stable log). Once committed, <b>rollback is not possible</b>.</li>
+<li><b>Failed</b> — normal execution can no longer proceed because of an error or failure (hardware/software problem,
+a check by the recovery system fails, e.g. the query to fetch marks cannot be executed).</li>
+<li><b>Aborted</b> — the transaction has been <b>rolled back</b> and the database restored to its state before the
+transaction started. After aborting, the recovery module chooses one of two options:
+  <ul>
+  <li><b>Restart</b> the transaction — if the abort was caused by hardware/software error or a deadlock that is not
+  the transaction’s own fault. It is treated as a new transaction.</li>
+  <li><b>Kill</b> the transaction — if it was due to an internal <b>logical error</b> (bad input, data not found,
+  program bug) that will happen again if restarted.</li>
+  </ul></li>
+</ol>
+<p>A transaction that is either <b>committed</b> or <b>aborted</b> is said to be <b>terminated</b>.</p>
+
+<div class="tbl-wrap"><table class="tbl small">
+<tr><th>Transition</th><th>When it happens</th></tr>
+<tr><td>Active → Partially committed</td><td>last operation of the transaction has executed</td></tr>
+<tr><td>Partially committed → Committed</td><td>commit record safely written (changes guaranteed permanent)</td></tr>
+<tr><td>Active → Failed</td><td>an error occurs during execution</td></tr>
+<tr><td>Partially committed → Failed</td><td>failure before changes could be made permanent (e.g. crash while writing)</td></tr>
+<tr><td>Failed → Aborted</td><td>rollback completed, database restored</td></tr>
+<tr><td>Aborted → (restart / kill)</td><td>recovery module decides</td></tr>
+</table></div>
+
+<div class="box tip"><div class="box-t">Key point</div>
+Before commit there is always a chance of rollback; after commit, rollback is impossible. If a committed transaction
+was wrong, the only fix is to run a new <b>compensating transaction</b> (e.g. transfer the money back).</div>
+
+<div class="box beyond"><div class="box-t">Observable external writes</div>
+Some actions cannot be undone — printing a receipt or dispensing cash at an ATM. A DBMS performs such “external writes”
+only <b>after the transaction is committed</b>, otherwise an aborted transaction may already have handed out money.</div>
+
+<div class="box exam"><div class="box-t">Exam tip</div>
+Always draw the state diagram with labelled arrows (it alone fetches half the marks), then one line per state, then
+restart vs kill.</div>

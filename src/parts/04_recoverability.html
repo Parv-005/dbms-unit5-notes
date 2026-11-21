@@ -1,0 +1,97 @@
+<!-- ============================================================ 7 -->
+<h2 id="s7"><span class="num">7</span>Recoverability of Schedules</h2>
+<p>Serializability assumed that no transaction fails. But transactions can <b>abort</b>. If T2 has read data written by
+T1 and then T1 aborts, T2 is working with garbage. Recoverability classifies schedules by how well they behave
+when a transaction fails.</p>
+<p>Throughout this section: “Tj <b>reads from</b> Ti” means Tj reads a data item whose last write was done by Ti.</p>
+
+<h3 id="s7-1">7.1 Non-recoverable schedule</h3>
+<div class="box ex"><div class="box-t">Example (class, corrected)</div>
+{{sched:nonrec}}
+<p>T9 read A written by T8 and <b>committed before T8</b>. Now T8 fails and must be rolled back. To be atomic, T9 (which
+used T8’s value) should also be undone — but T9 has already committed and, by durability, a committed transaction
+cannot be rolled back. The database cannot be brought to a consistent state ⇒ <b>non-recoverable</b>. A DBMS must never
+allow such schedules.</p>
+<div class="box note"><div class="box-t">Correction</div>The class notes write T9’s operation as <code>read(B)</code>. For the
+example to make sense, T9 must read the item written by T8, i.e. <code>read(A)</code>; otherwise T9 does not depend on T8 at all.</div></div>
+
+<h3 id="s7-2">7.2 Recoverable schedule</h3>
+<div class="box def"><div class="box-t">Definition</div>
+A schedule is <b>recoverable</b> if, for every pair of transactions Ti and Tj such that <b>Tj reads a data item previously
+written by Ti</b>, the <b>commit of Ti appears before the commit of Tj</b>.<br>
+(The reader must commit only after the writer it read from has committed.)</div>
+{{sched:rec}}
+<p>Here T9 still reads uncommitted data, but it waits to commit until T8 commits. If T8 had aborted instead, T9 could
+still be rolled back because it had not committed. <b>Why is recoverability desirable?</b> Because without it, the
+failure of one transaction can leave committed transactions that depend on rolled-back data — the database becomes
+permanently inconsistent and atomicity/durability are violated.</p>
+
+<h3 id="s7-3">7.3 Cascading rollback</h3>
+<p>A recoverable schedule can still be painful: if many transactions read from each other, one failure forces a chain of rollbacks.</p>
+<div class="box def"><div class="box-t">Definition</div>
+<b>Cascading rollback</b> is the phenomenon in which a <b>single transaction failure leads to a series of rollbacks</b>
+of other transactions that read (directly or indirectly) its uncommitted data.</div>
+{{sched:cascade}}
+<p>T2 read A from T1, and T3 read A from T2. When T1 fails, T2 must roll back (it read T1’s value), and then T3 must roll
+back (it read T2’s value). The schedule is recoverable (nobody committed), but it causes a lot of <b>undoing of work</b> —
+undesirable and not ideal.</p>
+
+<h3 id="s7-4">7.4 Cascadeless schedule (Avoids Cascading Aborts — ACA)</h3>
+<div class="box def"><div class="box-t">Definition</div>
+A schedule is <b>cascadeless</b> if, for every pair Ti, Tj such that <b>Tj reads a data item previously written by Ti</b>,
+the <b>commit of Ti appears before the read operation of Tj</b>.<br>
+In short: <b>transactions read only committed data</b>. (Class: “the child reads only after the parent has committed.”)</div>
+{{sched:cascadeless}}
+<p>T2 reads A only after T1 commits; T3 reads A only after T2 commits. If any transaction fails, nobody else has read its
+data ⇒ no cascading rollback.</p>
+<div class="box key"><div class="box-t">Every cascadeless schedule is recoverable</div>
+<p><b>Proof:</b> In a cascadeless schedule, if Tj reads from Ti then <i>c<sub>i</sub></i> comes before r<sub>j</sub>. Tj’s
+commit comes after its own read r<sub>j</sub>. So c<sub>i</sub> &lt; r<sub>j</sub> &lt; c<sub>j</sub>, i.e. Ti commits
+before Tj — which is exactly the recoverability condition. ∎</p>
+<p>The converse is false: the recoverable schedule in 7.2 is not cascadeless (T9 reads uncommitted A).</p></div>
+<div class="box key"><div class="box-t">Class note</div>Rollback (or even deadlock) is always preferred over an inconsistent
+schedule.</div>
+
+<h3 id="s7-5">7.5 Strict schedule <span class="beyond-tag">asked in 2026 PYQ</span></h3>
+<div class="box def"><div class="box-t">Definition</div>
+A schedule is <b>strict</b> if a transaction can <b>neither read nor write</b> a data item X until the last transaction that
+<b>wrote</b> X has <b>committed or aborted</b>.</div>
+<p>Strictness is stronger than cascadeless: cascadeless forbids reading uncommitted data, strict also forbids
+<b>overwriting</b> uncommitted data.</p>
+{{sched:nostrict}}
+<p>Why does it matter? Undo restores a <b>before-image</b>. If T1 aborts after T2’s write, undoing T1 restores A to its value
+before T1, wiping out T2’s write. Strict schedules make recovery simple: to undo a transaction, just restore the
+before-images of its writes.</p>
+
+<h3 id="s7-6">7.6 Relationship between the classes</h3>
+{{svg:venn_recov}}
+<div class="tbl-wrap"><table class="tbl small">
+<tr><th>Class</th><th>Condition (Tj reads/writes X last written by Ti)</th><th>Guarantee</th></tr>
+<tr><td>Recoverable</td><td>c<sub>i</sub> before c<sub>j</sub> (when Tj reads from Ti)</td><td>Never need to undo a committed transaction</td></tr>
+<tr><td>Cascadeless</td><td>c<sub>i</sub> before Tj’s <b>read</b></td><td>No cascading rollbacks</td></tr>
+<tr><td>Strict</td><td>c<sub>i</sub>/a<sub>i</sub> before Tj’s <b>read or write</b></td><td>Undo by simply restoring before-images</td></tr>
+</table></div>
+<p>Recoverability is <b>independent of serializability</b>: a schedule can be serializable but non-recoverable, or
+recoverable but not serializable. A good DBMS wants schedules that are <b>both conflict serializable and strict
+(or at least cascadeless)</b>. Strict 2PL (Section 8) produces exactly such schedules.</p>
+
+<h3 id="s7-7">7.7 How to test a schedule — method</h3>
+<div class="box tip"><div class="box-t">Step-by-step</div>
+<ol>
+<li>For every <b>read</b> r<sub>j</sub>(X), find the transaction Ti that <b>last wrote</b> X before it (ignore reads of
+initial values and reads of one’s own writes). List these “Tj reads from Ti” pairs.</li>
+<li><b>Recoverable?</b> For each pair, check that Ti commits before Tj commits.</li>
+<li><b>Cascadeless?</b> For each pair, check that Ti has already committed at the moment of the read.</li>
+<li><b>Strict?</b> Additionally, for every <b>write</b> w<sub>j</sub>(X), the previous writer of X must have committed/aborted.</li>
+</ol></div>
+<div class="box ex"><div class="box-t">Example — 2026 end-sem schedule</div>
+<p>r<sub>1</sub>(X); r<sub>2</sub>(Y); w<sub>1</sub>(X); r<sub>3</sub>(X); w<sub>2</sub>(Y); r<sub>1</sub>(Y); w<sub>3</sub>(X); c<sub>2</sub>; c<sub>1</sub>; c<sub>3</sub></p>
+{{sched:p26}}
+{{recov:p26}}
+<p>T3 reads X from T1, and T1 commits (step 9) before T3 commits (step 10) ✔. T1 reads Y from T2, and T2 commits (step 8)
+before T1 (step 9) ✔ ⇒ <b>recoverable</b>. But both reads happen while the writer is still uncommitted ⇒ <b>not
+cascadeless</b>, hence <b>not strict</b>.</p></div>
+
+<div class="box exam"><div class="box-t">Exam tip</div>
+Whenever a question asks “recoverable / cascadeless / strict?”, make the small <b>reads-from table</b> shown above, then
+answer each of the three questions with a one-line justification quoting the step numbers.</div>

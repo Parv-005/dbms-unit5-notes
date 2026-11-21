@@ -1,0 +1,132 @@
+<!-- ============================================================ 13 -->
+<h2 id="s13"><span class="num">13</span>Quick Revision Sheet</h2>
+<p>Read this the night before the exam. Every line is explained in detail in the sections above.</p>
+<div class="grid2">
+<div class="box key"><div class="box-t">Transactions &amp; ACID</div><ul class="small">
+<li>Transaction = logical unit of work; read(X) → buffer, write(X) → back to DB.</li>
+<li>Commit = make permanent; Rollback = undo everything.</li>
+<li>A: all-or-nothing (recovery/undo). C: valid → valid (programmer + constraints). I: as if serial (concurrency control).
+D: committed survives crashes (recovery/redo).</li>
+<li>States: Active → Partially committed → Committed; Active/PC → Failed → Aborted → restart / kill.</li></ul></div>
+<div class="box key"><div class="box-t">Concurrency problems</div><ul class="small">
+<li>Lost update: W–W, second write overwrites first.</li>
+<li>Dirty read: W–R on uncommitted data; fix = read committed / strict 2PL.</li>
+<li>Unrepeatable read: R–W, same item two values.</li>
+<li>Phantom: insert/delete changes the set of rows matching a condition.</li>
+<li>Serial: consistent but slow. Concurrent: fast, needs control. Parallel: truly simultaneous on many CPUs.</li></ul></div>
+<div class="box key"><div class="box-t">Serializability</div><ul class="small">
+<li>Conflict = different txns + same item + at least one write.</li>
+<li>Precedence graph: Ti → Tj if Ti’s op conflicts with and precedes Tj’s op. Cycle ⇒ not CS; acyclic ⇒ CS, serial order = topological sort.</li>
+<li>View equivalence: same initial reads, same reads-from, same final writes.</li>
+<li>CS ⇒ VS; VS but not CS ⇒ blind writes. VS test NP-complete ⇒ test CS first.</li>
+<li>n transactions ⇒ n! serial schedules.</li></ul></div>
+<div class="box key"><div class="box-t">Recoverability</div><ul class="small">
+<li>Recoverable: if Tj reads from Ti, Ti commits before Tj commits.</li>
+<li>Cascading rollback: one abort forces many.</li>
+<li>Cascadeless: read only committed data (Ti commits before Tj reads).</li>
+<li>Strict: no read or write of X until last writer of X commits/aborts.</li>
+<li>Serial ⊂ Strict ⊂ Cascadeless ⊂ Recoverable.</li></ul></div>
+<div class="box key"><div class="box-t">Locking</div><ul class="small">
+<li>S (read, shareable) / X (read+write, exclusive). Only S–S compatible.</li>
+<li>2PL: growing (only acquire) then shrinking (only release); lock point = last lock. Guarantees CS; not deadlock-free; can cascade.</li>
+<li>Strict 2PL: X held till commit ⇒ cascadeless, recoverable. Rigorous: all locks till commit ⇒ serial order = commit order.</li>
+<li>Conservative: all locks before start ⇒ deadlock-free, needs advance knowledge.</li>
+<li>Rigorous ⊂ Strict ⊂ Basic; conservative separate.</li></ul></div>
+<div class="box key"><div class="box-t">Deadlock</div><ul class="small">
+<li>Cycle of waiting transactions; starvation = one waits forever while others proceed.</li>
+<li>Prevention: conservative 2PL, item ordering, wait-die (older waits, younger dies), wound-wait (older wounds, younger waits), timeout.</li>
+<li>Detection: cycle in wait-for graph ⇒ choose min-cost victim, roll back, avoid starvation.</li></ul></div>
+<div class="box key"><div class="box-t">Recovery</div><ul class="small">
+<li>Failures: transaction, system crash (memory lost), disk failure. Storage: volatile / non-volatile / stable.</li>
+<li>Log: &lt;Ti start&gt;, &lt;Ti, X, old, new&gt;, &lt;Ti commit&gt;, &lt;Ti abort&gt;, &lt;checkpoint L&gt;. WAL: log before data.</li>
+<li>Deferred: write after commit; redo committed only (NO-UNDO/REDO).</li>
+<li>Immediate: write anytime; undo uncommitted, redo committed (UNDO/REDO).</li>
+<li>Checkpoint: flush log + dirty pages + &lt;checkpoint L&gt;; recover only from last checkpoint. Frequent ⇒ faster crash recovery, slower normal work; no effect on media recovery.</li>
+<li>Shadow paging: current vs shadow page table; commit = switch pointer; NO-UNDO/NO-REDO; fragmentation, GC, commit overhead.</li></ul></div>
+<div class="box key"><div class="box-t">Security</div><ul class="small">
+<li>CIA: confidentiality, integrity, availability. Security (unauthorised) vs integrity (correctness).</li>
+<li>Controls: access, inference, flow, encryption; DBA: create accounts, grant, revoke, assign levels.</li>
+<li>DAC: GRANT … [WITH GRANT OPTION]; REVOKE … CASCADE | RESTRICT; grant graph; views; roles.</li>
+<li>MAC: TS &gt; S &gt; C &gt; U; Bell–LaPadula: no read up, no write down. RBAC: privileges to roles.</li>
+<li>SQL injection → prepared statements. Encryption at rest/in transit; hashing passwords; audit trail.</li></ul></div>
+</div>
+
+<div class="box exam"><div class="box-t">Answer-writing checklist for numericals</div>
+<ol class="small"><li>Number every operation of the schedule.</li>
+<li>Precedence graph: go item by item; list conflicting pairs with step numbers; draw graph; state cycle / topological order.</li>
+<li>Recoverability: make a reads-from table, then check commit order (recoverable), commit-before-read (cascadeless),
+commit-before-read-or-write (strict).</li>
+<li>2PL questions: draw the growing/shrinking graph; check each transaction separately; for deadlock show the
+hold-and-request interleaving.</li>
+<li>Log questions: write the log in the right format; for each crash point list committed (redo) and uncommitted
+(undo/ignore) transactions and give final values.</li></ol></div>
+
+<h3 id="s13-1">13.1 Important differences (ready-made tables)</h3>
+<p>Differences already given in the sections above: concurrent vs parallel (4.3), conflict vs view serializability (6.8),
+deadlock vs starvation (8.4), 2PL family (8.9), wait-die vs wound-wait (9.3), deferred vs immediate (11.6), security vs
+integrity (12.1), DAC vs MAC (12.7). The remaining frequently asked ones:</p>
+<div class="grid2">
+<div class="tbl-wrap"><table class="tbl small"><tr><th>Serial schedule</th><th>Serializable schedule</th></tr>
+<tr><td>Transactions run one after another</td><td>Operations may be interleaved</td></tr>
+<tr><td>No concurrency benefit</td><td>Concurrency with correctness</td></tr>
+<tr><td>Always correct by definition</td><td>Correct because it is equivalent to some serial schedule</td></tr>
+<tr><td>n! possible serial schedules</td><td>Tested by precedence graph (CS) or view equivalence (VS)</td></tr></table></div>
+<div class="tbl-wrap"><table class="tbl small"><tr><th>Undo</th><th>Redo</th></tr>
+<tr><td>Reverses a transaction’s changes</td><td>Re-applies a transaction’s changes</td></tr>
+<tr><td>Writes the <b>old</b> value (before-image)</td><td>Writes the <b>new</b> value (after-image)</td></tr>
+<tr><td>For transactions <b>without</b> a commit record</td><td>For transactions <b>with</b> a commit record</td></tr>
+<tr><td>Scans the log backwards</td><td>Scans the log forwards</td></tr>
+<tr><td>Ensures atomicity</td><td>Ensures durability</td></tr></table></div>
+<div class="tbl-wrap"><table class="tbl small"><tr><th>Dirty read</th><th>Non-repeatable read</th></tr>
+<tr><td>Reads <b>uncommitted</b> data</td><td>Reads <b>committed</b> data that changes between two reads</td></tr>
+<tr><td>Writer may later roll back</td><td>Writer has committed an update</td></tr>
+<tr><td>W–R conflict</td><td>R–W conflict</td></tr>
+<tr><td>Prevented by READ COMMITTED / strict 2PL</td><td>Prevented by REPEATABLE READ / holding S-locks</td></tr></table></div>
+<div class="tbl-wrap"><table class="tbl small"><tr><th>Non-repeatable read</th><th>Phantom read</th></tr>
+<tr><td>Same <b>row</b>, different <b>value</b></td><td>Same <b>query</b>, different <b>set of rows</b></td></tr>
+<tr><td>Caused by UPDATE (or DELETE) of that row</td><td>Caused by INSERT / DELETE (or UPDATE) of rows matching the condition</td></tr>
+<tr><td>Row-level problem; row locks fix it</td><td>Predicate-level problem; needs predicate / index-range locks</td></tr></table></div>
+<div class="tbl-wrap"><table class="tbl small"><tr><th>Basic 2PL</th><th>Conservative (static) 2PL</th></tr>
+<tr><td>Locks acquired as needed (dynamic)</td><td>All locks acquired before execution (declared in advance)</td></tr>
+<tr><td>No advance knowledge needed</td><td>Read/write sets must be known beforehand</td></tr>
+<tr><td>Deadlock possible</td><td>Deadlock-free</td></tr>
+<tr><td>More concurrency</td><td>Less concurrency (items locked before use)</td></tr>
+<tr><td colspan="2" class="center">Both guarantee conflict serializability; neither alone prevents cascading rollback</td></tr></table></div>
+<div class="tbl-wrap"><table class="tbl small"><tr><th>Strict 2PL</th><th>Rigorous 2PL</th></tr>
+<tr><td>X-locks held till commit/abort</td><td>S- and X-locks held till commit/abort</td></tr>
+<tr><td>S-locks may be released early</td><td>No lock released before the end</td></tr>
+<tr><td>Serial order = lock-point order</td><td>Serial order = commit order</td></tr>
+<tr><td>More concurrency</td><td>Less concurrency</td></tr></table></div>
+</div>
+
+<h3 id="s13-2">13.2 Two-mark questions (one-line answers)</h3>
+<div class="tbl-wrap"><table class="tbl small">
+<tr><th style="width:32%">Question</th><th>Answer</th></tr>
+<tr><td>What is a transaction?</td><td>A logical unit of work consisting of one or more database operations that must execute completely or not at all.</td></tr>
+<tr><td>What are ACID properties?</td><td>Atomicity, Consistency, Isolation, Durability — properties every transaction must satisfy for reliable processing.</td></tr>
+<tr><td>What is a schedule?</td><td>The order in which operations of concurrent transactions are executed, preserving the order within each transaction.</td></tr>
+<tr><td>What is a serializable schedule?</td><td>A (non-serial) schedule equivalent to some serial schedule of the same transactions.</td></tr>
+<tr><td>When do two operations conflict?</td><td>Different transactions, same data item, and at least one is a write.</td></tr>
+<tr><td>What is a blind write?</td><td>A write of an item by a transaction that has not read that item before.</td></tr>
+<tr><td>What is a lost update?</td><td>One transaction’s update is overwritten by another that read the same old value.</td></tr>
+<tr><td>What is a dirty read?</td><td>Reading a value written by a transaction that has not yet committed.</td></tr>
+<tr><td>What is a phantom read?</td><td>Re-running a query returns new or missing rows because another transaction inserted/deleted matching rows.</td></tr>
+<tr><td>What is a recoverable schedule?</td><td>If Tj reads from Ti, then Ti commits before Tj commits.</td></tr>
+<tr><td>What is a cascadeless schedule?</td><td>Transactions read only committed data (writer commits before the read).</td></tr>
+<tr><td>What is a lock?</td><td>A variable associated with a data item that controls concurrent access to it (S = shared/read, X = exclusive/write).</td></tr>
+<tr><td>What is 2PL?</td><td>A locking protocol with a growing phase (only acquire) followed by a shrinking phase (only release); it guarantees conflict serializability.</td></tr>
+<tr><td>What is a lock point?</td><td>The moment a transaction acquires its last lock (end of the growing phase).</td></tr>
+<tr><td>Why is conservative 2PL called static 2PL?</td><td>Because the transaction declares and acquires its whole lock set before it starts.</td></tr>
+<tr><td>What is a deadlock?</td><td>A set of transactions each waiting for a lock held by another in the set, so none can proceed.</td></tr>
+<tr><td>What is starvation?</td><td>A transaction waits indefinitely (or is repeatedly rolled back) while others progress.</td></tr>
+<tr><td>What is a wait-for graph?</td><td>A graph with edge Ti → Tj if Ti waits for a lock held by Tj; a cycle means deadlock.</td></tr>
+<tr><td>What is a log?</td><td>A sequential file on stable storage recording start, update (old/new values), commit and abort of transactions.</td></tr>
+<tr><td>What is Write-Ahead Logging?</td><td>A log record must reach stable storage before the corresponding data block is written to disk.</td></tr>
+<tr><td>What is a checkpoint?</td><td>A point where log and dirty buffers are flushed and &lt;checkpoint L&gt; is written, so recovery can start from there.</td></tr>
+<tr><td>What is the commit point?</td><td>The moment the &lt;Ti commit&gt; record is on stable storage; after it the transaction is committed and must be redone after a crash.</td></tr>
+<tr><td>What is shadow paging?</td><td>Recovery using a shadow page table (unchanged) and a current page table; commit atomically switches to the current table.</td></tr>
+<tr><td>Undo vs redo?</td><td>Undo restores old values of uncommitted transactions; redo re-applies new values of committed ones.</td></tr>
+<tr><td>What is the CIA triad?</td><td>Confidentiality, Integrity, Availability — the three goals of database security.</td></tr>
+<tr><td>Authentication vs authorization?</td><td>Authentication verifies who the user is; authorization decides what that user may do.</td></tr>
+<tr><td>What is SQL injection?</td><td>An attack where malicious input changes the meaning of an SQL query; prevented by parameterized queries.</td></tr>
+</table></div>

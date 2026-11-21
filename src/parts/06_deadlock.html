@@ -1,0 +1,168 @@
+<!-- ============================================================ 9 -->
+<h2 id="s9"><span class="num">9</span>Deadlock Handling</h2>
+
+<h3 id="s9-1">9.1 Deadlock in DBMS</h3>
+<div class="box def"><div class="box-t">Definition</div>
+<ul><li>A <b>deadlock</b> is a condition where two or more transactions are waiting indefinitely for one another to give up locks.</li>
+<li>A system is in a <b>deadlock state</b> if there is a set of transactions such that <b>every transaction in the set is
+waiting for another transaction in the set</b>.</li></ul></div>
+<div class="box ex"><div class="box-t">Example (PDF) — Student and Grade tables</div>
+<p>T1 holds a lock on some rows of the <b>Student</b> table and needs to update some rows of the <b>Grade</b> table.
+Simultaneously, T2 holds locks on those rows of the Grade table and needs to update the Student rows held by T1.
+T1 waits for T2, T2 waits for T1 — all activity comes to a halt and remains at a standstill.</p>
+{{svg:deadlock_rag}}
+{{sched:deadlock_student}}</div>
+
+<p>A deadlock can occur only if all four <b>Coffman conditions</b> hold at the same time <span class="beyond-tag">from OS, useful</span>:</p>
+<ol><li><b>Mutual exclusion</b> — an X-locked item can be held by only one transaction.</li>
+<li><b>Hold and wait</b> — a transaction holds some locks while waiting for others.</li>
+<li><b>No preemption</b> — a lock cannot be forcibly taken away from a transaction.</li>
+<li><b>Circular wait</b> — T1 waits for T2, T2 for T3, …, Tn for T1.</li></ol>
+<p>Prevention schemes work by making sure at least one of these never holds.</p>
+
+<h3 id="s9-2">9.2 Ways to deal with deadlocks</h3>
+<div class="tbl-wrap"><table class="tbl small">
+<tr><th>Approach</th><th>Idea</th><th>Good when</th></tr>
+<tr><td><b>Deadlock prevention</b></td><td>Design the protocol so that a deadlock can never occur</td><td>Probability of deadlock is high</td></tr>
+<tr><td><b>Deadlock detection &amp; recovery</b></td><td>Let deadlocks happen, detect them (wait-for graph) and roll back a victim</td><td>Deadlocks are rare</td></tr>
+<tr><td><b>Timeout</b></td><td>If a transaction waits longer than a limit, assume deadlock and roll it back</td><td>Short transactions; simple systems</td></tr>
+</table></div>
+
+<h3 id="s9-3">9.3 Deadlock prevention</h3>
+<h4>(a) Pre-declaration — Conservative 2PL</h4>
+<p>Each transaction locks <b>all</b> the data items it needs <b>before</b> it begins execution: either all are locked in one
+step or none are. This removes “hold and wait”. Drawbacks: hard to know in advance which items are needed, and data items
+stay locked long before they are used → low utilisation.</p>
+<h4>(b) Ordering of data items</h4>
+<p>Impose a <b>total order</b> on all data items (e.g. by address/ID) and require every transaction to lock items <b>only in
+that increasing order</b>. A cycle of waits would need someone to request a “smaller” item while holding a “larger” one,
+which is forbidden ⇒ no circular wait. (The tree/graph-based protocol is a variant of this.)</p>
+<h4>(c) Timestamp-based prevention with preemption: Wait–Die and Wound–Wait</h4>
+<p>Every transaction gets a <b>timestamp</b> TS when it starts (smaller TS = <b>older</b>). When Ti requests a lock held by Tj:</p>
+<div class="grid2">
+<div class="box def"><div class="box-t">Wait–Die (non-preemptive)</div>
+<ul><li>If TS(Ti) &lt; TS(Tj) — Ti is <b>older</b> → Ti <b>waits</b>.</li>
+<li>Otherwise — Ti is <b>younger</b> → Ti <b>dies</b> (is rolled back) and restarts later with its <b>original</b> timestamp.</li></ul>
+<p><i>Older waits for younger; younger never waits for older.</i></p></div>
+<div class="box def"><div class="box-t">Wound–Wait (preemptive)</div>
+<ul><li>If TS(Ti) &lt; TS(Tj) — Ti is <b>older</b> → Ti <b>wounds</b> Tj (Tj is rolled back, releasing the lock).</li>
+<li>Otherwise — Ti is <b>younger</b> → Ti <b>waits</b>.</li></ul>
+<p><i>Younger waits for older; older never waits for younger.</i></p></div>
+</div>
+{{svg:waitdie}}
+<div class="box ex"><div class="box-t">Example</div>
+<p>T5 (TS = 5), T10 (TS = 10), T15 (TS = 15).</p>
+<ul><li>T5 requests an item held by T10: wait-die → T5 (older) <b>waits</b>; wound-wait → T5 <b>wounds</b> T10 (T10 rolled back).</li>
+<li>T15 requests an item held by T10: wait-die → T15 (younger) <b>dies</b>; wound-wait → T15 <b>waits</b>.</li></ul></div>
+<div class="tbl-wrap"><table class="tbl small">
+<tr><th>Basis</th><th>Wait–Die</th><th>Wound–Wait</th></tr>
+<tr><td>Type</td><td>Non-preemptive (a transaction is only rolled back when <i>it</i> requests)</td><td>Preemptive (a lock holder can be forced to roll back)</td></tr>
+<tr><td>Older requests from younger</td><td>Older waits</td><td>Older wounds (rolls back) younger</td></tr>
+<tr><td>Younger requests from older</td><td>Younger dies</td><td>Younger waits</td></tr>
+<tr><td>Who is rolled back</td><td>Always the younger</td><td>Always the younger</td></tr>
+<tr><td>Number of rollbacks</td><td>More — a young transaction may die repeatedly</td><td>Fewer</td></tr>
+<tr><td>Starvation</td><td colspan="2" class="center">None in both — a restarted transaction keeps its old timestamp, so it eventually becomes the oldest</td></tr>
+</table></div>
+<p>Why no deadlock? In wait-die, waits only go from older to younger; in wound-wait, only from younger to older. Either way
+the waits follow one direction of the timestamp order, so a cycle is impossible.</p>
+<h4>(d) Other simple schemes</h4>
+<ul><li><b>No-waiting</b>: if a lock cannot be granted immediately, abort the requester at once (and restart after a delay).</li>
+<li><b>Timeout-based</b>: a transaction waits for a lock at most a fixed time; then it is rolled back. Simple, but the time is
+hard to choose: too long wastes time, too short causes unnecessary rollbacks (and possible starvation).</li></ul>
+
+<h3 id="s9-4">9.4 Deadlock detection — the wait-for graph</h3>
+<div class="box def"><div class="box-t">Wait-for graph</div>
+<ul><li>One node per active transaction.</li>
+<li>An edge <b>Ti → Tj</b> means Ti is <b>waiting</b> for Tj to release a lock on an item Ti needs. The edge is added when the
+request is blocked and removed when the lock is granted.</li>
+<li>The system is in a <b>deadlock if and only if the wait-for graph contains a cycle</b>; every transaction on the cycle
+is deadlocked.</li></ul></div>
+{{svg:waitfor}}
+<p>The detection algorithm is run periodically. How often depends on how frequently deadlocks occur and how many
+transactions they affect; if deadlocks are frequent, run it more often.</p>
+<div class="box warn"><div class="box-t">Don’t mix up the two graphs</div>
+<b>Precedence graph</b> (Section 6): edges from <i>conflicting operations</i>; a cycle means <i>not serializable</i>.<br>
+<b>Wait-for graph</b>: edges from <i>blocked lock requests</i>; a cycle means <i>deadlock</i>.</div>
+
+<h3 id="s9-5">9.5 Recovery from deadlock</h3>
+<ol>
+<li><b>Select a victim</b> — roll back the transaction(s) that incur the <b>minimum cost</b>. Factors: how long it has run and
+how much longer it needs; how many data items it has used and how many more it needs; how many transactions would be
+involved in the rollback (cascades).</li>
+<li><b>Rollback</b> — <i>total rollback</i> (abort and restart) or <i>partial rollback</i> (roll back only as far as needed to
+release the required lock, which requires extra bookkeeping).</li>
+<li><b>Avoid starvation</b> — the same transaction must not be picked as victim every time. Include the <b>number of
+rollbacks</b> in the cost factor.</li>
+</ol>
+
+<h3 id="s9-6">9.6 Deadlock and starvation in 2PL — summary</h3>
+<ul>
+<li>Basic, strict and rigorous 2PL <b>all allow deadlocks</b>: a transaction holds some locks (growing phase) and waits for
+others. 2PL ensures serializability, not deadlock freedom.</li>
+<li><b>Handling:</b> (i) prevent with conservative 2PL, item ordering, wait-die or wound-wait; or (ii) detect with a wait-for
+graph and roll back a victim; or (iii) use timeouts.</li>
+<li><b>Starvation</b> in 2PL arises from unfair lock granting (a stream of S-locks blocking an X-request) or repeatedly
+choosing the same deadlock victim. Fix: FCFS lock queues, aging, counting rollbacks, timestamp schemes that keep the
+original timestamp.</li>
+<li><b>Strict 2PL with respect to deadlock:</b> it still deadlocks, but deadlock <i>recovery</i> is cheap and clean: since no
+other transaction has read the victim’s uncommitted writes (X-locks were held), aborting the victim never causes
+cascading rollbacks. That is why real systems use strict 2PL + deadlock detection (or timeouts).</li>
+</ul>
+
+<!-- ============================================================ 10 -->
+<h2 id="s10"><span class="num">10</span>Other Concurrency-Control Protocols <span class="beyond-tag">beyond syllabus</span></h2>
+<p>Not in your syllabus list, but they are in Korth and often appear in viva/competitive exams. A short and complete overview:</p>
+
+<h3 id="s10-1">10.1 Timestamp-ordering protocol</h3>
+<p>Instead of locks, order transactions by their start time. Each transaction Ti gets a unique timestamp TS(Ti). Each
+data item Q keeps:</p>
+<ul><li><b>W-timestamp(Q)</b> — largest TS of any transaction that wrote Q successfully;</li>
+<li><b>R-timestamp(Q)</b> — largest TS of any transaction that read Q successfully.</li></ul>
+<div class="box def"><div class="box-t">Rules</div>
+<p><b>Ti issues read(Q):</b></p>
+<ul><li>If TS(Ti) &lt; W-timestamp(Q): Ti wants a value already overwritten by a younger transaction → <b>reject; roll back Ti</b>.</li>
+<li>Else: execute; R-timestamp(Q) = max(R-timestamp(Q), TS(Ti)).</li></ul>
+<p><b>Ti issues write(Q):</b></p>
+<ul><li>If TS(Ti) &lt; R-timestamp(Q): a younger transaction already read the old value → <b>reject; roll back Ti</b>.</li>
+<li>If TS(Ti) &lt; W-timestamp(Q): Ti’s write is obsolete → <b>reject; roll back Ti</b>.</li>
+<li>Else: execute; W-timestamp(Q) = TS(Ti).</li></ul>
+<p>A rolled-back transaction restarts with a <b>new</b> timestamp.</p></div>
+<ul><li>✔ Conflict serializable (equivalent serial order = timestamp order). ✔ <b>Deadlock-free</b> (no transaction ever waits).</li>
+<li>✘ Possible <b>starvation</b> of long transactions that keep restarting. ✘ Can generate non-recoverable / cascading schedules
+unless extended (e.g. buffer all writes until commit).</li></ul>
+<p><b>Thomas’ write rule:</b> in the case TS(Ti) &lt; W-timestamp(Q) for a write, simply <b>ignore</b> the obsolete write instead of
+rolling back. This allows some view-serializable (non-conflict-serializable) schedules, like the T3/T4/T6 blind-write schedule.</p>
+
+<h3 id="s10-2">10.2 Validation-based (optimistic) protocol</h3>
+<p>Assumes conflicts are rare. Each transaction runs in three phases: <b>(1) Read phase</b> — read data and compute on
+<b>local copies</b>; <b>(2) Validation phase</b> — check that its reads/writes don’t conflict with transactions that
+committed during its lifetime; <b>(3) Write phase</b> — if validation succeeds, copy local updates to the database, else
+restart. No locks, no deadlocks, no cascading rollbacks; good for read-mostly workloads.</p>
+
+<h3 id="s10-3">10.3 Multiple-granularity locking</h3>
+<p>Data is a hierarchy (database → areas → files → records). Locking a whole file at once is cheaper than locking every
+record. To make this safe, <b>intention locks</b> are placed on ancestors:</p>
+{{svg:mgl}}
+<ul><li><b>IS</b> (intention-shared): explicit S locks will be taken at a lower level.</li>
+<li><b>IX</b> (intention-exclusive): explicit X (or S) locks will be taken lower down.</li>
+<li><b>SIX</b>: the node is locked in S, and X locks will be taken lower down.</li></ul>
+<div class="tbl-wrap" style="max-width:560px;margin:auto"><table class="tbl center small">
+<tr><th></th><th>IS</th><th>IX</th><th>S</th><th>SIX</th><th>X</th></tr>
+<tr><th>IS</th><td class="y">✔</td><td class="y">✔</td><td class="y">✔</td><td class="y">✔</td><td class="n">✘</td></tr>
+<tr><th>IX</th><td class="y">✔</td><td class="y">✔</td><td class="n">✘</td><td class="n">✘</td><td class="n">✘</td></tr>
+<tr><th>S</th><td class="y">✔</td><td class="n">✘</td><td class="y">✔</td><td class="n">✘</td><td class="n">✘</td></tr>
+<tr><th>SIX</th><td class="y">✔</td><td class="n">✘</td><td class="n">✘</td><td class="n">✘</td><td class="n">✘</td></tr>
+<tr><th>X</th><td class="n">✘</td><td class="n">✘</td><td class="n">✘</td><td class="n">✘</td><td class="n">✘</td></tr></table></div>
+<p>Rules: lock the root first; to lock a node in S/IS the parent must be held in IS or IX; to lock in X/IX/SIX the parent must
+be held in IX or SIX; lock top-down, unlock bottom-up; follow 2PL.</p>
+
+<h3 id="s10-4">10.4 Multiversion schemes and snapshot isolation</h3>
+<p>Keep several versions of each item. A reader gets the version appropriate to its timestamp/snapshot, so <b>reads never wait
+and never block writers</b>. Used by PostgreSQL, Oracle and MySQL InnoDB (snapshot isolation). Snapshot isolation is fast but
+not fully serializable (it can allow a “write skew” anomaly).</p>
+
+<h3 id="s10-5">10.5 Graph-based (tree) protocol</h3>
+<p>If data items are arranged in a tree and only X-locks are used: the first lock may be on any item; afterwards an item
+can be locked only if its <b>parent</b> is currently locked by the same transaction; items can be unlocked at any time; an
+item once unlocked cannot be relocked. Guarantees conflict serializability and <b>freedom from deadlock</b> (and need not be
+two-phase), but may lock more items than needed and does not by itself guarantee recoverability.</p>

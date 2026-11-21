@@ -1,0 +1,285 @@
+<!-- ============================================================ 6 -->
+<h2 id="s6"><span class="num">6</span>Schedules and Serializability</h2>
+
+<h3 id="s6-1">6.1 What is a schedule?</h3>
+<div class="box def"><div class="box-t">Definition — Schedule</div>
+When several transactions execute concurrently, the <b>order in which their instructions are executed</b> is called a
+<b>schedule</b>. A schedule contains all the instructions of the participating transactions and <b>preserves the order
+of instructions within each individual transaction</b>.</div>
+<p>A <b>complete schedule</b> contains a commit or abort as the last action of every transaction. The concept of
+<b>serializability of schedules</b> is used to decide which schedules are correct when transactions’ operations are
+interleaved.</p>
+
+<h3 id="s6-2">6.2 Types of schedules</h3>
+<p>The PDF lists four types: <b>Serial, Non-serial, Conflict-serializable and View-serializable</b>. By
+recoverability there are also <b>Recoverable, Cascadeless and Strict</b> schedules (Section 7). In total:</p>
+<div class="tbl-wrap"><table class="tbl small">
+<tr><th>Classified by…</th><th>Types</th></tr>
+<tr><td>Interleaving</td><td>Serial · Non-serial (concurrent)</td></tr>
+<tr><td>Correctness w.r.t. concurrency (serializability)</td><td>Conflict-serializable · View-serializable · Non-serializable</td></tr>
+<tr><td>Correctness w.r.t. failures (recoverability)</td><td>Recoverable · Cascadeless · Strict · Non-recoverable</td></tr>
+</table></div>
+
+<h4>(a) Serial schedule</h4>
+<p>One transaction executes <b>completely</b> before the next one starts; after the first transaction finishes its cycle,
+the next is executed. With T1 and T2 there are two serial schedules (T1 then T2, or T2 then T1). Serial schedules are
+always correct.</p>
+<div class="side">{{sched:serialA}}{{sched:serialB}}</div>
+
+<h4>(b) Non-serial schedule</h4>
+<p>If interleaving of operations is allowed, the schedule is <b>non-serial</b>: operations of each transaction are executed
+non-consecutively, interleaved with operations of the other transaction. A non-serial schedule may or may not be correct:</p>
+<div class="side">{{sched:nonserialC}}{{sched:nonserialD}}</div>
+<p>Schedule C is <b>incorrect</b> (T1’s update of X is lost). Schedule D gives exactly the same result as serial schedule A,
+so it is <b>correct</b>. How do we tell them apart without computing values? That is what serializability does.</p>
+
+<h3 id="s6-3">6.3 Serializability — the idea</h3>
+<div class="box def"><div class="box-t">Definition — Serializable schedule</div>
+A (non-serial) schedule is <b>serializable</b> if it is <b>equivalent to some serial schedule</b> of the same
+transactions. Since serial schedules are always consistent, a serializable schedule is also consistent — and it gets
+the speed benefits of concurrency.</div>
+<p>“Equivalent” can be defined in three ways:</p>
+<ol>
+<li><b>Result equivalence</b> — same final values. Not used, because it may hold “by accident” for particular input values.</li>
+<li><b>Conflict equivalence</b> → <b>conflict serializability</b> (6.4 – 6.6). Most important.</li>
+<li><b>View equivalence</b> → <b>view serializability</b> (6.7).</li>
+</ol>
+<div class="box key"><div class="box-t">Class summary</div>
+If a concurrent schedule turns out to be <b>serializable</b>, we can be sure it gives consistent results, so we use it
+for its throughput and time efficiency. If it is <b>not</b> serializable, it <i>may or may not</i> be consistent, so we do
+not go ahead with it and look for an alternative (e.g. make a transaction wait).</div>
+
+<h3 id="s6-4">6.4 Conflicting operations</h3>
+<div class="box def"><div class="box-t">Definition — Conflicting operations</div>
+Two operations in a schedule <b>conflict</b> if <b>all three</b> conditions hold:
+<ol><li>they belong to <b>different transactions</b>;</li>
+<li>they access the <b>same data item</b>;</li>
+<li><b>at least one</b> of them is a <b>write</b>.</li></ol></div>
+<div class="tbl-wrap"><table class="tbl center small">
+<tr><th>Ti then Tj on the same item Q</th><th>Conflict?</th><th>Why order matters</th></tr>
+<tr><td>read(Q) · read(Q)</td><td class="y">No</td><td>both read the same value whatever the order</td></tr>
+<tr><td>read(Q) · write(Q)</td><td class="n">Yes (R–W)</td><td>Ti reads old value before, new value after</td></tr>
+<tr><td>write(Q) · read(Q)</td><td class="n">Yes (W–R)</td><td>Tj reads Ti’s value before, old value after</td></tr>
+<tr><td>write(Q) · write(Q)</td><td class="n">Yes (W–W)</td><td>final value of Q depends on which write is last</td></tr>
+</table></div>
+<p>Non-conflicting operations (different items, or both reads) can be <b>swapped</b> without changing the result.
+Conflicting operations can <b>never</b> be swapped.</p>
+<div class="box ex"><div class="box-t">Examples from the PDF</div>
+<p><b>(1) Swapping is possible</b> — two reads of A:</p>
+<div class="side">{{sched:swap_rr_1}}<span class="arrowsep">⇒</span>{{sched:swap_rr_2}}</div>
+<p>S1 ≡ S2, so these operations are <b>non-conflicting</b>.</p>
+<p><b>(2) Swapping is not possible</b> — read(A) and write(A):</p>
+<div class="side">{{sched:swap_rw_1}}<span class="arrowsep">⇒</span>{{sched:swap_rw_2}}</div>
+<p>In S1, T1 reads the old A; in S2, T1 reads T2’s new A. S1 ≢ S2, so these operations <b>conflict</b>.</p></div>
+<div class="box tip"><div class="box-t">Swap rules in one line (class)</div>
+For the <b>same variable</b>: if even <b>one write</b> is involved, we cannot swap. We <b>can</b> swap: two reads of the same
+variable, or any two operations on <b>different variables</b>. (We also never swap two operations of the same transaction.)</div>
+
+<h3 id="s6-5">6.5 Conflict serializability — swapping method</h3>
+<div class="box def"><div class="box-t">Definition</div>
+<ul><li>If a schedule S can be transformed into a schedule S′ by a series of <b>swaps of non-conflicting
+instructions</b>, then S and S′ are <b>conflict equivalent</b>.</li>
+<li>A schedule is <b>conflict serializable</b> if it is conflict equivalent to a <b>serial schedule</b>, i.e. after swapping
+non-conflicting operations it can be transformed into a serial schedule.</li></ul></div>
+<p>The swapping method works instruction by instruction, one swap at a time. With 2 transactions, try to convert S into
+T1 → T2; if that fails, try T2 → T1.</p>
+
+<div class="box ex"><div class="box-t">Worked example 1 (class) — conflict serializable</div>
+{{sched:cs1}}
+<p>Goal: T1 → T2. We need to move T1’s <code>read(B)</code> and <code>write(B)</code> above T2’s <code>read(A)</code>,
+<code>write(A)</code>. They work on <b>different variables</b> (B vs A), so every swap is allowed:</p>
+<ol>
+<li>swap T1:<code>read(B)</code> with T2:<code>write(A)</code></li>
+<li>swap T1:<code>read(B)</code> with T2:<code>read(A)</code></li>
+<li>swap T1:<code>write(B)</code> with T2:<code>write(A)</code></li>
+<li>swap T1:<code>write(B)</code> with T2:<code>read(A)</code></li>
+</ol>
+<div class="side">{{sched:cs1_step1}}<span class="arrowsep">⇒</span>{{sched:cs1_final}}</div>
+<p><b>Result:</b> S is conflict equivalent to the serial schedule <b>T1 → T2</b> ⇒ S is <b>conflict serializable</b>.</p></div>
+
+<div class="box ex"><div class="box-t">Worked example 2 (class) — NOT conflict serializable</div>
+{{sched:cs2}}
+<ul>
+<li><b>Try T1 → T2:</b> T1’s <code>write(A)</code> (step 5) must move above T2’s <code>write(A)</code> (step 3). Both write A
+⇒ conflicting pair, cannot be swapped. ✗</li>
+<li><b>Try T2 → T1:</b> T1’s <code>read(A)</code> (step 1) must move below T2’s <code>write(A)</code> (step 3). read(A)/write(A)
+conflict ⇒ cannot be swapped. ✗</li>
+</ul>
+<p>It is not equivalent to either serial schedule ⇒ <b>not conflict serializable</b>.</p></div>
+
+<div class="box ex"><div class="box-t">Worked example 3 (class) — “no combination possible”</div>
+{{sched:t346}}
+<p>T3 → T4 → T6 fails because T4’s <code>write(Q)</code> (step 2) would have to move after T3’s <code>write(Q)</code> (step 3)
+— a W–W conflict. Any other order fails similarly ⇒ <b>not conflict serializable</b>. (We will see in 6.7 that it
+<i>is</i> view serializable.)</p></div>
+
+<h3 id="s6-6">6.6 Testing conflict serializability — the Precedence Graph</h3>
+<p>Swapping is slow and error-prone for big schedules. The simple and efficient method is to build a directed graph
+called the <b>precedence graph</b> (serialization graph, conflict graph).</p>
+<div class="box def"><div class="box-t">Construction of the precedence graph G = (V, E)</div>
+<ul><li><b>V</b> (vertices): one node for each transaction participating in schedule S.</li>
+<li><b>E</b> (edges): draw an edge <b>Ti → Tj</b> if an operation of Ti <b>conflicts with</b> and <b>comes before</b>
+an operation of Tj. Precisely, Ti → Tj if for some data item Q, one of these holds:
+<ol><li>Ti executes <b>write(Q)</b> before Tj executes <b>read(Q)</b> &nbsp;(W–R)</li>
+<li>Ti executes <b>read(Q)</b> before Tj executes <b>write(Q)</b> &nbsp;(R–W)</li>
+<li>Ti executes <b>write(Q)</b> before Tj executes <b>write(Q)</b> &nbsp;(W–W)</li></ol></li></ul>
+<p>The edge Ti → Tj means: <b>in any equivalent serial schedule, Ti must come before Tj</b>.</p></div>
+<div class="box key"><div class="box-t">The test (theorem)</div>
+<ul><li>If the precedence graph has a <b>cycle</b> ⇒ S is <b>NOT conflict serializable</b>.</li>
+<li>If the graph is <b>acyclic</b> ⇒ S <b>is conflict serializable</b>, and an equivalent serial order is obtained by a
+<b>topological sort</b> of the graph (repeatedly pick a node with no incoming edges). If there are several topological
+orders, each one is a valid equivalent serial schedule.</li></ul>
+<p>Cost: with n transactions, cycle detection takes O(n²) — polynomial, easy.</p></div>
+<div class="box tip"><div class="box-t">Step-by-step method (use this in the exam)</div>
+<ol><li>Number the operations of the schedule in time order.</li>
+<li>Take each <b>data item</b> separately. List its operations in order.</li>
+<li>For each operation, look at every <b>later</b> operation on the same item by a <b>different</b> transaction; if at least
+one of the two is a write, add edge (earlier txn → later txn). Skip read–read pairs.</li>
+<li>Draw the graph (one edge per ordered pair, even if many conflicts create it).</li>
+<li>Look for a cycle. Cycle ⇒ not CS. No cycle ⇒ CS; write the topological order(s).</li></ol></div>
+
+<div class="box ex"><div class="box-t">Worked examples from class</div>
+<div class="side">{{sched:pg1}}{{pgraph:pg1}}</div>
+<p>read<sub>1</sub>(A) → write<sub>2</sub>(A) and write<sub>1</sub>(A) → write<sub>2</sub>(A): both give the same edge T1 → T2.
+Acyclic ⇒ conflict serializable as <b>T1 → T2</b> (T1 occurs first).</p>
+<div class="side">{{sched:pg2}}{{pgraph:pg2}}</div>
+<p>read<sub>1</sub>(A) before write<sub>2</sub>(A) ⇒ T1 → T2; read<sub>2</sub>(A) before write<sub>1</sub>(A) ⇒ T2 → T1.
+There is a loop ⇒ <b>not conflict serializable</b>.</p>
+<div class="side">{{sched:pg3}}{{pgraph:pg3}}</div>
+<p>All conflicting pairs point in the same direction (T1 → T2) ⇒ <b>serializable</b> as T1 → T2.</p></div>
+
+<div class="box ex"><div class="box-t">Worked example from the PDF — three transactions</div>
+{{sched:pdfpg}}
+<p>Analyse item by item:</p>
+{{edges:pdfpg}}
+<ul>
+<li><b>B:</b> T2 writes B (step 6) and later T3 reads B (step 10) ⇒ <b>T2 → T3</b> (also r<sub>2</sub>(B) before w<sub>3</sub>(B), and w<sub>2</sub>(B) before w<sub>3</sub>(B)).</li>
+<li><b>C:</b> T3 writes C (step 8) and later T1 reads C (step 13) ⇒ <b>T3 → T1</b>.</li>
+<li><b>A:</b> T1 writes A (step 9) and later T2 reads A (step 11) ⇒ <b>T1 → T2</b>.</li>
+</ul>
+{{pgraph:pdfpg}}
+{{verdict:pdfpg}}
+<div class="box note"><div class="box-t">Source note</div>The PDF explains this example by looking only at write → later-read pairs. That happens
+to give the same edges here, but in general you must check <b>all three</b> types (W–R, R–W, W–W); the table above does.</div>
+</div>
+
+<div class="box ex"><div class="box-t">Worked example — an acyclic graph with two serial orders</div>
+<div class="side">{{sched:acyc3}}{{pgraph:acyc3}}</div>
+{{verdict:acyc3}}
+<p>T1 and T2 have no conflict with each other, so either may come first; both must precede T3.</p></div>
+
+<div class="box ex"><div class="box-t">Class exercise (4 transactions) — fully solved</div>
+<p>S: R1(A), R2(B), W3(A), R4(C), W1(B), R2(A), W4(B), W3(C), R1(C), W2(C), R4(A), W1(A), R3(B), W4(C), W2(B)</p>
+{{edges:lec4}}
+{{pgraph:lec4|nolabel}}
+{{verdict:lec4}}
+<p>For instance R1(A) (step 1) precedes W3(A) (step 3) ⇒ T1 → T3, while W3(A) (step 3) precedes W1(A) (step 12) ⇒ T3 → T1.
+One cycle is enough to conclude <b>not conflict serializable</b>.</p></div>
+
+<div class="box warn"><div class="box-t">Common mistakes</div><ul>
+<li>Adding an edge for <b>read–read</b> pairs (they never conflict).</li>
+<li>Adding edges between operations of the <b>same</b> transaction.</li>
+<li>Only looking at <b>adjacent</b> operations — you must compare each operation with <b>every later</b> conflicting
+operation on that item.</li>
+<li>Getting the direction wrong: the edge goes from the transaction whose operation comes <b>first</b>.</li>
+<li>Forgetting that a cycle can be longer than two nodes (T1 → T2 → T3 → T1).</li></ul></div>
+
+<div class="box note"><div class="box-t">Notation note</div>The class notes sometimes write “serializable as T1 ← T2” to mean
+“T1 executes first, then T2”. These notes always write the serial order as <b>T1 → T2</b> (arrow = “comes before”),
+which matches the precedence-graph edge direction.</div>
+
+<h3 id="s6-7">6.7 View serializability</h3>
+<p>Conflict serializability is <b>sufficient but not necessary</b> for correctness: some schedules are correct but not
+conflict serializable. View serializability is a weaker (more permissive) notion, based on <b>logic, not swaps</b>:
+what does each transaction <i>see</i>, and what is the <i>final</i> result?</p>
+<div class="box def"><div class="box-t">Definition — View equivalence</div>
+Two schedules S and S′ (on the same set of transactions) are <b>view equivalent</b> if, for every data item Q, these
+three conditions hold:
+<ol>
+<li><b>Initial read:</b> if transaction Ti reads the <b>initial value</b> of Q in S, then Ti must also read the initial value of Q in S′.</li>
+<li><b>Updated read (reads-from):</b> if Ti executes read(Q) in S and that value was <b>produced by write(Q) of Tj</b>,
+then in S′ also Ti’s read(Q) must read the value produced by the <b>same</b> write(Q) of Tj.</li>
+<li><b>Final write:</b> the transaction that performs the <b>final write(Q)</b> in S must also perform the final write(Q) in S′.</li>
+</ol>
+<p>A schedule is <b>view serializable</b> if it is <b>view equivalent to some serial schedule</b>.</p></div>
+<p>Conditions 1 and 2 ensure each transaction reads the same values in both schedules (so it computes the same
+things); condition 3 ensures the database ends in the same state.</p>
+
+<h4>Examples for each condition</h4>
+<div class="box ex"><div class="box-t">Condition 1 — Initial read</div>
+<div class="side">{{sched:vi1}}{{sched:vi2}}</div>
+<p>In S1, T1 reads the <b>initial</b> value of A. In S2, T1 reads the value <b>written by T2</b>. So S1 and S2 are
+<b>not</b> view equivalent.</p>
+<div class="box note"><div class="box-t">Correction (PDF p. 119)</div>The PDF shows exactly these two schedules and says they
+<b>are</b> view equivalent “because the initial read is done by T1 in both”. That is wrong: in S2, T2 writes A
+<i>before</i> T1 reads it, so T1’s read is no longer an initial read. A correct pair for condition 1 would have T1’s
+read before any write of A in both schedules.</div></div>
+
+<div class="box ex"><div class="box-t">Condition 2 — Updated read (PDF example, correct)</div>
+<div class="side">{{sched:vu1}}{{sched:vu2}}</div>
+<p>In S1, T3 reads A <b>updated by T2</b>; in S2, T3 reads A <b>updated by T1</b> ⇒ <b>not view equal</b>.</p></div>
+
+<div class="box ex"><div class="box-t">Condition 3 — Final write</div>
+<div class="side">{{sched:vf1}}{{sched:vf2}}</div>
+<p>The final write of A is done by T3 in both ⇒ condition 3 is satisfied.</p>
+<div class="box note"><div class="box-t">Clarification (PDF p. 120)</div>The PDF concludes these are “view equal because the final write
+is by T3 in both”. Condition 3 is indeed satisfied, but to be view equivalent <b>all three</b> conditions must hold.
+Here condition 2 fails: in S1, T2 reads A written by T1; in S2, T2 reads the initial A. So, overall, S1 and S2 are
+<b>not</b> view equivalent. Use this pair only to illustrate condition 3.</div></div>
+
+<h4>Blind writes and the relation with conflict serializability</h4>
+<div class="box def"><div class="box-t">Key facts</div>
+<ul><li>Every <b>conflict serializable</b> schedule is also <b>view serializable</b>, but <b>not vice-versa</b>.</li>
+<li>A <b>blind write</b> is a write(Q) by a transaction that has <b>not read Q</b> before writing it.</li>
+<li>Every view serializable schedule that is <b>not</b> conflict serializable contains <b>blind writes</b>. (So: no blind
+writes + not CS ⇒ not VS either.)</li></ul></div>
+
+<div class="box ex"><div class="box-t">Classic example — view serializable but not conflict serializable</div>
+<div class="side">{{sched:t346}}{{pgraph:t346}}</div>
+<p>The precedence graph has a cycle T3 ⇄ T4 ⇒ <b>not conflict serializable</b>. Now compare with the serial schedule
+⟨T3, T4, T6⟩:</p>
+{{sched:t346_serial}}
+<ol><li>Initial read: T3 reads the initial Q in both ✔</li>
+<li>Updated read: no transaction reads a value written by another transaction in either schedule ✔</li>
+<li>Final write: T6 writes Q last in both ✔</li></ol>
+<p>⇒ S is <b>view equivalent to ⟨T3, T4, T6⟩</b> ⇒ <b>view serializable</b>. The writes of T4 and T6 are <b>blind
+writes</b> (they never read Q). T4’s write is “useless” — it is overwritten before anyone reads it — which is why the
+order with respect to it does not matter.</p></div>
+
+<div class="box ex"><div class="box-t">Class examples</div>
+<p><b>(a)</b> The schedule of worked example 1 (T1: R/W A, T2: R/W A, T1: R/W B, T2: R/W B) compared with serial T1 → T2:
+rule 1 ✔ (T1 reads the initial A and B in both), rule 2 ✔ (T2 reads A and B written by T1 in both — e.g. the pair
+“w<sub>1</sub>(A) → r<sub>2</sub>(A)” is preserved), rule 3 ✔ (T2 writes A and B last in both) ⇒ view serializable as T1 → T2.</p>
+<p><b>(b)</b> S: w<sub>1</sub>(t), w<sub>2</sub>(t), w<sub>1</sub>(t) — precedence graph has T1 ⇄ T2 ⇒ not conflict
+serializable. Compare with serial ⟨T2, T1⟩:</p>
+<div class="side">{{sched:wt1}}{{sched:wt2}}</div>
+<p>No reads at all; final write is by T1 in both ⇒ <b>view serializable</b> (equivalent to T2 → T1). The
+writes are blind writes.</p>
+<p><b>(c)</b> S: w<sub>1</sub>(X), r<sub>2</sub>(X), w<sub>2</sub>(X), w<sub>1</sub>(X).</p>
+{{sched:vsno}}
+<p>Not conflict serializable (T1 ⇄ T2). View? T2 reads X written by T1 ⇒ T1 must come <b>before</b> T2. The final write
+is by T1 ⇒ T1 must come <b>after</b> T2. Contradiction ⇒ <b>not view serializable</b> either.</p></div>
+
+<div class="box tip"><div class="box-t">How to test view serializability in an exam</div>
+<ol><li>Draw the precedence graph. If acyclic ⇒ CS ⇒ also VS. Done.</li>
+<li>If cyclic, check for <b>blind writes</b>. None ⇒ not VS.</li>
+<li>Otherwise write down the constraints: who reads initial values (must come before every writer of that item),
+the reads-from pairs (writer before reader, no other writer of that item in between), and the final writer of each
+item (must be the last among writers of that item). Find a serial order satisfying all of them (or show none exists).</li></ol>
+<p>Testing view serializability in general is <b>NP-complete</b>, which is why DBMSs use conflict serializability in practice.</p></div>
+
+<h3 id="s6-8">6.8 Conflict vs View serializability — summary</h3>
+{{svg:venn_serial}}
+<div class="tbl-wrap"><table class="tbl small">
+<tr><th>Basis</th><th>Conflict serializability</th><th>View serializability</th></tr>
+<tr><td>Based on</td><td>Order of conflicting operations (swaps)</td><td>What each transaction reads + final writes (logic)</td></tr>
+<tr><td>Test</td><td>Precedence graph, cycle detection — polynomial O(n²)</td><td>NP-complete in general</td></tr>
+<tr><td>Relationship</td><td>CS ⇒ VS</td><td>VS ⇏ CS (VS-only schedules have blind writes)</td></tr>
+<tr><td>Used in practice?</td><td>Yes — locking protocols guarantee it</td><td>Rarely; mainly theoretical</td></tr>
+<tr><td>Permissiveness</td><td>Stricter (fewer schedules)</td><td>More schedules allowed</td></tr>
+</table></div>
+<div class="box exam"><div class="box-t">Exam tip — “Why don’t we check view serializability ahead of conflict serializability?”</div>
+Because (1) testing VS is NP-complete while testing CS is a simple polynomial cycle check; (2) every CS schedule is
+already VS, so if the CS test passes we are done; (3) VS adds only schedules with blind writes, which are rare in
+practice; and (4) practical protocols (2PL, timestamp ordering) are designed to guarantee CS. So we always test CS first
+and look at VS only if CS fails and blind writes are present.</div>

@@ -1,0 +1,364 @@
+<!-- ============================================================ 14 -->
+<h2 id="s14"><span class="num">14</span>Previous Year Questions — Topic-wise, Fully Solved</h2>
+<p>Every Unit-5 question found in the papers you provided, grouped by topic. Answers are written the way they should be
+written in the exam: definitions, diagrams/tables, step-by-step working and a clear final statement. Try each question
+yourself first, then open the answer.</p>
+<div class="tbl-wrap"><table class="tbl small">
+<tr><th>Paper (as labelled in these notes)</th><th>Source file</th><th>Unit-5 questions</th></tr>
+<tr><td>End-Sem Nov–Dec 2025 (ITITC302)</td><td>endsem 2025.pdf · same Qs in ITITC05.pdf (as Q4)</td><td>Q5(a), Q5(b), Q5(c); Q1(b) security part</td></tr>
+<tr><td>End-Sem Nov–Dec 2024 (ITITC302/INITC302)</td><td>endsem 2024.pdf</td><td>Q5(a), Q5(b), Q5(c)</td></tr>
+<tr><td>End-Sem 2026 Summer Semester</td><td>endsem 2026 summer sem.pdf</td><td>Q5(a), Q5(b), Q5(c)</td></tr>
+<tr><td>End-Sem Nov–Dec 2023 (ITITC05/INITC05)</td><td>PYQ images</td><td>Q4(a), Q4(b), Q4(c)</td></tr>
+<tr><td>End-Sem Nov–Dec 2022 (COCSC05)</td><td>PYQ images</td><td>Q4(a), Q4(b), Q4(c), Q5(a), Q5(b), Q5(c)</td></tr>
+<tr><td>End-Sem (year not printed on the photographed page)</td><td>PYQ images</td><td>Q1(b), Q4(a), Q4(b), Q4(c), Q5(a), Q5(b), Q5(c)</td></tr>
+<tr><td>Mid-Sem Oct 2021 (ITITC05)</td><td>PYQ images</td><td>Q4(a), Q4(b), Q4(c)</td></tr>
+<tr><td>Mid-Sem Sep 2024 (ITITC302)</td><td>ITITC302_INITC302_2024.pdf</td><td>Q1(a) (ACID vs file system)</td></tr>
+</table></div>
+<p class="small muted">Mid-Sem 2025, Mid-Sem 2026 and the ITITC302-INITC302-EEITC401 paper contain no Unit-5 questions.</p>
+
+<!-- ------------------------------------------------ P1 -->
+<h3 id="p1">14.1 Transactions &amp; ACID</h3>
+
+<div class="pyq">
+<div class="pyq-h"><span class="chip acc">Mid-Sem Sep 2024</span><span class="chip">Q1(a)</span><span class="chip warn">2 marks</span></div>
+<div class="pyq-q"><p>How could the lack of support for ACID properties in a file system affect the reliability of data operations compared to
+a DBMS, especially in financial or transactional applications?</p></div>
+<details><summary>Show answer</summary><div class="ans">
+<p>A file system has no transaction manager, so none of the ACID guarantees exist:</p>
+<ul>
+<li><b>No atomicity:</b> if a program crashes after debiting account A but before crediting B, the half-done update stays in the files — money disappears. A DBMS rolls back the incomplete transaction using its log.</li>
+<li><b>No consistency enforcement:</b> rules like “balance ≥ 0” or “account must exist” must be coded in every program; one buggy program corrupts data. A DBMS enforces integrity constraints centrally.</li>
+<li><b>No isolation:</b> two programs updating the same file at the same time can overwrite each other (lost update, e.g. two simultaneous withdrawals both succeed on the old balance). A DBMS uses locking (2PL).</li>
+<li><b>No durability:</b> data written to OS buffers may be lost in a power failure even after the user was told “success”. A DBMS writes the commit record to a stable log and redoes lost committed work.</li>
+</ul>
+<p class="answer-line">Hence for banking/payments a file system gives lost or duplicated money and inconsistent records, while a DBMS guarantees reliable, all-or-nothing, isolated and permanent transactions.</p>
+</div></details></div>
+
+<div class="pyq">
+<div class="pyq-h"><span class="chip acc">End-Sem (year not printed)</span><span class="chip">Q1(b)(i)</span><span class="chip warn">part of 4 marks</span></div>
+<div class="pyq-q"><p>Briefly describe the following term with the help of an example: <b>ACID properties</b>.</p></div>
+<details><summary>Show answer</summary><div class="ans">
+<p>A transaction is a logical unit of work. To keep the database correct, every transaction must satisfy ACID.
+Example used throughout: transfer ₹100 from A (₹600) to B (₹300): <code>read(A); A=A−100; write(A); read(B); B=B+100; write(B)</code>.</p>
+<ul>
+<li><b>Atomicity</b> — all operations happen or none. If the system fails after write(A) but before write(B), the DBMS undoes write(A), so we never end with A = 500, B = 300. (Recovery manager.)</li>
+<li><b>Consistency</b> — the transaction takes the DB from one consistent state to another: A + B = 900 before and after. (Programmer + integrity constraints.)</li>
+<li><b>Isolation</b> — concurrent transactions do not see each other’s intermediate results; e.g. a report summing A + B while the transfer is half-done must not see 800. Result equals some serial order. (Concurrency control.)</li>
+<li><b>Durability</b> — once committed, A = 500 and B = 400 survive even if the system crashes immediately afterwards. (Recovery manager, log.)</li>
+</ul>
+{{svg:acid}}
+</div></details></div>
+
+<!-- ------------------------------------------------ P2 -->
+<h3 id="p2">14.2 Concurrency problems</h3>
+
+<div class="pyq">
+<div class="pyq-h"><span class="chip acc">End-Sem 2026 Summer</span><span class="chip">Q5(b)(i)</span><span class="chip warn">part of 5 marks</span></div>
+<div class="pyq-q"><p>Discuss the causes of Lost Update, Dirty Read, Non-repeatable Read, and Phantom Read with suitable examples.</p></div>
+<details><summary>Show answer</summary><div class="ans">
+<p>All four are caused by <b>uncontrolled concurrent execution</b>: operations of two transactions on the same data are
+interleaved without a concurrency-control protocol, so a conflicting operation sneaks in between.</p>
+<h4>1. Lost Update — cause: W–W conflict after both read</h4>
+<p>Two transactions read the same item and both write a new value computed from the old one; the later write overwrites
+the earlier, so one update is lost.</p>
+{{sched:lost}}
+<h4>2. Dirty Read — cause: W–R conflict on uncommitted data</h4>
+<p>A transaction reads a value written by another transaction that has not committed; if the writer rolls back, the reader has used a value that never existed.</p>
+{{sched:dirty}}
+<h4>3. Non-repeatable Read — cause: R–W conflict</h4>
+<p>A transaction reads the same item twice and another transaction updates (and commits) it in between, so the two reads differ.</p>
+{{sched:unrep}}
+<h4>4. Phantom Read — cause: insert/delete by another transaction</h4>
+<p>A transaction re-runs a query with a condition; another transaction has inserted/deleted rows satisfying that condition, so new “phantom” rows appear (or rows vanish).</p>
+{{sched:phantom}}
+<div class="tbl-wrap"><table class="tbl small">
+<tr><th>Problem</th><th>Conflict</th><th>Prevented by</th></tr>
+<tr><td>Lost update</td><td>W–W</td><td>2PL (X-lock before read-modify-write)</td></tr>
+<tr><td>Dirty read</td><td>W–R (uncommitted)</td><td>Strict 2PL / READ COMMITTED</td></tr>
+<tr><td>Non-repeatable read</td><td>R–W</td><td>Holding S-locks till end (2PL) / REPEATABLE READ</td></tr>
+<tr><td>Phantom read</td><td>Read vs insert/delete</td><td>Predicate/index locking / SERIALIZABLE</td></tr></table></div>
+</div></details></div>
+
+<div class="pyq">
+<div class="pyq-h"><span class="chip acc">Mid-Sem Oct 2021</span><span class="chip">Q4(c)</span><span class="chip warn">4 marks</span></div>
+<div class="pyq-q"><p>Explain the dirty read problem. How can we overcome the problem of dirty read? Explain with an example.
+Explain the difference between deadlock and starvation with the help of examples.</p></div>
+<details><summary>Show answer</summary><div class="ans">
+<h4>Dirty read</h4>
+<p>A <b>dirty read</b> occurs when transaction T2 reads a data item written by T1 <b>before T1 commits</b>. If T1 later aborts,
+its write is undone, but T2 has already used the “dirty” value, which never officially existed.</p>
+{{sched:dirty}}
+<p><b>Overcoming it:</b></p>
+<ul><li>Allow a transaction to read an item only after the transaction that last wrote it has <b>committed</b> (cascadeless schedules).</li>
+<li>Implement this with <b>Strict 2PL</b>: X-locks are held until commit/abort, so T2’s lock-S(X) is granted only after T1 commits. In the example, T2 would wait at step 4; when T1 aborts, X = 10 is restored and T2 reads the correct 10.</li>
+<li>In SQL, use isolation level READ COMMITTED or higher.</li></ul>
+<h4>Deadlock vs starvation</h4>
+<div class="tbl-wrap"><table class="tbl small">
+<tr><th>Deadlock</th><th>Starvation</th></tr>
+<tr><td>Two or more transactions wait for each other in a cycle; none can proceed.</td><td>One transaction waits indefinitely while the others keep running.</td></tr>
+<tr><td>Further execution of those transactions is impossible without DBMS intervention.</td><td>Execution is delayed for an unpredictable time but is still possible.</td></tr>
+<tr><td>Detected by a cycle in the wait-for graph; resolved by rolling back a victim; prevented by wait-die / wound-wait / conservative 2PL.</td><td>Prevented by FCFS lock queues, aging, and limiting how often the same transaction is chosen as victim.</td></tr></table></div>
+<p><b>Deadlock example:</b></p>
+{{sched:deadlock1}}
+<p><b>Starvation example:</b></p>
+{{sched:starve}}
+</div></details></div>
+
+<!-- ------------------------------------------------ P3 -->
+<h3 id="p3">14.3 Schedules &amp; Serializability</h3>
+
+<div class="pyq">
+<div class="pyq-h"><span class="chip acc">End-Sem Nov–Dec 2023</span><span class="chip">Q4(a)</span><span class="chip warn">4 marks</span></div>
+<div class="pyq-q"><p>Consider the following two transactions:<br>
+T1: read(A); read(B); if A = 0 then B := B + 1; write(B).<br>
+T2: read(B); read(A); if B = 0 then A := A + 1; write(A).<br>
+Let the consistency requirement be A = 0 ∨ B = 0, with A = B = 0 the initial values.<br>
+(i) Show that every serial execution involving these two transactions preserves the consistency of the database.<br>
+(ii) Show a concurrent execution of T1 and T2 that produces a nonserializable schedule.<br>
+(iii) Is there a concurrent execution of T1 and T2 that produces a serializable schedule?</p></div>
+<details><summary>Show answer</summary><div class="ans">
+<h4>(i) Serial executions</h4>
+<table class="tbl small"><tr><th>Serial order</th><th>Execution</th><th>Final A, B</th><th>A = 0 ∨ B = 0 ?</th></tr>
+<tr><td>T1 → T2</td><td>T1: A = 0 so B := 1. T2: reads B = 1 ≠ 0, so A stays 0.</td><td>A = 0, B = 1</td><td class="y">True (A = 0)</td></tr>
+<tr><td>T2 → T1</td><td>T2: B = 0 so A := 1. T1: reads A = 1 ≠ 0, so B stays 0.</td><td>A = 1, B = 0</td><td class="y">True (B = 0)</td></tr></table>
+<p class="answer-line">Both serial executions preserve consistency.</p>
+<h4>(ii) A non-serializable concurrent execution</h4>
+{{sched:p23_nonser}}
+<p>Both transactions read the initial values (A = 0, B = 0), so both perform their update: final A = 1, B = 1, which
+violates A = 0 ∨ B = 0. Precedence graph: r<sub>1</sub>(A) before w<sub>2</sub>(A) ⇒ T1 → T2; r<sub>2</sub>(B) before
+w<sub>1</sub>(B) ⇒ T2 → T1 — a cycle ⇒ <b>not (conflict) serializable</b>.</p>
+<h4>(iii) Is there a concurrent serializable execution?</h4>
+<p><b>No.</b> A serializable schedule must be equivalent to T1 → T2 or T2 → T1.</p>
+<ul><li>For T1 → T2: there must be no edge T2 → T1, so T2’s <code>read(B)</code> must come after T1’s <code>write(B)</code>. But
+<code>write(B)</code> is T1’s <b>last</b> instruction and <code>read(B)</code> is T2’s <b>first</b>, so T2 starts only after T1 has
+finished — that is the serial schedule itself.</li>
+<li>For T2 → T1: symmetrically, T1’s first instruction <code>read(A)</code> must follow T2’s last instruction <code>write(A)</code>
+— again serial.</li></ul>
+<p class="answer-line">Hence every interleaved (truly concurrent) execution of T1 and T2 is non-serializable; only the two serial schedules are serializable.</p>
+</div></details></div>
+
+<div class="pyq">
+<div class="pyq-h"><span class="chip acc">Mid-Sem Oct 2021</span><span class="chip">Q4(a)</span><span class="chip warn">4 marks</span></div>
+<div class="pyq-q"><p>Discuss the advantages of a serial schedule. Check if the following schedule is conflict serializable. Show the
+serializable schedule, if possible.<br>T1: R(A); T2: R(A); T2: R(B); T2: W(B); T1: R(B); T1: W(A)</p></div>
+<details><summary>Show answer</summary><div class="ans">
+<p><b>Advantages of a serial schedule:</b> (1) always produces a consistent database — each transaction runs alone from one
+consistent state to another; (2) no concurrency anomalies (lost update, dirty read …); (3) no need for concurrency control;
+(4) simple recovery. (Its disadvantage is low throughput and poor resource utilisation.)</p>
+{{sched:m21}}
+{{conf:m21}}
+{{pgraph:m21}}
+{{verdict:m21}}
+<p><b>By swapping:</b> T1’s R(A) does not conflict with T2’s R(A) (both reads) nor with R(B)/W(B) (different item), so it can
+be moved down below W(B), giving the serial schedule:</p>
+{{sched:m21_serial}}
+<p class="answer-line">The schedule is conflict serializable and is equivalent to the serial schedule T2 → T1.</p>
+</div></details></div>
+
+<div class="pyq">
+<div class="pyq-h"><span class="chip acc">End-Sem Nov–Dec 2024</span><span class="chip">Q5(b)</span><span class="chip warn">5 marks</span></div>
+<div class="pyq-q"><p>Consider the transactions T1, T2 and T3 and the schedules S1 and S2 given below.<br>
+T1: r1(X); r1(Z); w1(X); w1(Z)<br>T2: r2(Y); r2(Z); w2(Z)<br>T3: r3(Y); r3(X); w3(Y)<br>
+S1: r1(X); r3(Y); r3(X); r2(Y); r2(Z); w3(Y); w2(Z); r1(Z); w1(X); w1(Z)<br>
+S2: r1(X); r3(Y); r2(Y); r3(X); r1(Z); r2(Z); w3(Y); w1(X); w2(Z); w1(Z)<br>
+Which of the schedules are conflict serializable? (Use precedence graph.)</p></div>
+<details><summary>Show answer</summary><div class="ans">
+<p><b>Method:</b> two operations conflict if they are from different transactions, on the same item, and at least one is a
+write. For each conflicting pair (earlier → later) draw an edge between the transactions. A cycle ⇒ not conflict serializable.</p>
+<h4>Schedule S1</h4>
+{{sched:p24_s1}}
+{{conf:p24_s1}}
+{{pgraph:p24_s1}}
+{{verdict:p24_s1}}
+<h4>Schedule S2</h4>
+{{sched:p24_s2}}
+{{conf:p24_s2}}
+{{pgraph:p24_s2}}
+{{verdict:p24_s2}}
+<p>In S2, r<sub>1</sub>(Z) (step 5) precedes w<sub>2</sub>(Z) (step 9) ⇒ T1 → T2, but r<sub>2</sub>(Z) (step 6) and
+w<sub>2</sub>(Z) (step 9) precede w<sub>1</sub>(Z) (step 10) ⇒ T2 → T1.</p>
+<p class="answer-line">S1 is conflict serializable (equivalent to T2 → T3 → T1); S2 is not conflict serializable (cycle T1 ⇄ T2).</p>
+</div></details></div>
+
+<div class="pyq">
+<div class="pyq-h"><span class="chip acc">End-Sem Nov–Dec 2025</span><span class="chip">Q5(b)</span><span class="chip warn">5 marks</span><span class="chip">also ITITC05 Q4(b)</span></div>
+<div class="pyq-q"><p>Schedule S is given by the following sequence of operations (rn(X) = Tn reads X, wn(X) = Tn writes X):<br>
+w3(A), r1(A), r5(C), w1(B), r2(B), w2(B), r4(B), w4(B), w3(C), r1(C), w2(C), r6(D), w5(D), r3(D), w6(B), r2(A), w2(A), r4(A),
+w4(A), r5(B), w5(B), r6(C), w6(C), r1(B), w1(D), r3(B), w3(B), r2(D), w2(D), r4(C), w4(C), r5(A), w5(A), r6(B), w6(A)<br>
+(i) Construct the precedence (conflict) graph for S. Show all edges between transactions.<br>
+(ii) Based on your graph, state whether S is conflict serializable.<br>
+(iii) If S is conflict serializable, list all the serial schedules that are conflict equivalent to S. If it is not, explain why.<br>
+(iv) State “why don’t we check view serializability ahead of conflict serializability”.</p></div>
+<details><summary>Show answer</summary><div class="ans">
+<p>Number the 35 operations 1 … 35 in the given order. Then take each data item separately and, for every operation, compare
+it with each later conflicting operation (different transaction, at least one write).</p>
+<h4>(i) Edges, item by item</h4>
+{{edges:p25}}
+<p><b>All distinct edges (29):</b><br>
+T1→T2, T1→T3, T1→T4, T1→T5, T1→T6;<br>
+T2→T1, T2→T3, T2→T4, T2→T5, T2→T6;<br>
+T3→T1, T3→T2, T3→T4, T3→T5, T3→T6;<br>
+T4→T1, T4→T3, T4→T5, T4→T6;<br>
+T5→T1, T5→T2, T5→T3, T5→T4, T5→T6;<br>
+T6→T1, T6→T2, T6→T3, T6→T4, T6→T5.</p>
+<p>Every pair of transactions is connected in <b>both</b> directions except T2–T4, which has only T2 → T4. In the graph,
+each pair of curved arrows between two nodes is one edge in each direction:</p>
+{{pgraph:p25|nolabel}}
+<p>The same edges as an adjacency matrix (✔ in row Ti, column Tj means edge Ti → Tj):</p>
+{{matrix:p25}}
+<h4>(ii) Conflict serializable?</h4>
+<p>The graph has cycles. The simplest: <b>T1 → T2</b> because w<sub>1</sub>(B) (step 4) precedes r<sub>2</sub>(B) (step 5), and
+<b>T2 → T1</b> because w<sub>2</sub>(B) (step 6) precedes r<sub>1</sub>(B) (step 24). Others: T5 ⇄ T6 (r<sub>5</sub>(A) 32 → w<sub>6</sub>(A) 35
+and r<sub>6</sub>(D) 12 → w<sub>5</sub>(D) 13), T3 ⇄ T6, T4 ⇄ T6, …</p>
+<p class="answer-line">S is NOT conflict serializable.</p>
+<h4>(iii) Equivalent serial schedules</h4>
+<p>None exists. A conflict-equivalent serial schedule must order the transactions consistently with every edge (a
+topological order). Because of the cycle T1 → T2 → T1, T1 would have to come both before and after T2, which is impossible.
+So no serial schedule of T1…T6 is conflict equivalent to S.</p>
+<h4>(iv) Why not check view serializability first?</h4>
+<ul><li>Testing <b>view</b> serializability is <b>NP-complete</b> (in the worst case we must try the n! serial orders), whereas
+testing <b>conflict</b> serializability needs only a precedence graph and cycle detection, which is polynomial (O(n²)).</li>
+<li>Every conflict-serializable schedule is automatically view serializable, so if the cheap CS test succeeds, nothing more
+needs checking.</li>
+<li>The extra schedules that are VS but not CS always contain <b>blind writes</b>, which are rare in practice, so the expensive
+test rarely helps.</li>
+<li>Practical protocols (2PL, timestamp ordering) guarantee conflict serializability, so CS is what DBMSs actually enforce.</li></ul>
+<p><i>Extra (for completeness):</i> S has blind writes, so one might ask whether it is view serializable. It is not: T2 reads B
+from T1 (steps 4 → 5) ⇒ T1 before T2; T1 reads B from T5 (21 → 24) ⇒ T5 before T1; T5 reads B from T6 (15 → 20) ⇒ T6
+before T5; T6 reads C from T2 (11 → 22) ⇒ T2 before T6. That requires T2 &lt; T6 &lt; T5 &lt; T1 &lt; T2 — impossible.</p>
+</div></details></div>
+
+<div class="pyq">
+<div class="pyq-h"><span class="chip acc">End-Sem 2026 Summer</span><span class="chip">Q5(c)</span><span class="chip warn">5 marks</span></div>
+<div class="pyq-q"><p>Consider the following schedule: 1 T1:R(X), 2 T2:R(Y), 3 T1:W(X), 4 T3:R(X), 5 T2:W(Y), 6 T1:R(Y), 7 T3:W(X),
+8 T2:Commit, 9 T1:Commit, 10 T3:Commit. Answer and justify: (i) Draw the precedence graph. (ii) Determine whether the
+schedule is conflict serializable. (iii) If serializable, identify the equivalent serial schedule(s). (iv) Determine
+whether the schedule is recoverable, cascadeless, and strict.</p></div>
+<details><summary>Show answer</summary><div class="ans">
+{{sched:p26}}
+<h4>(i) Precedence graph</h4>
+{{conf:p26}}
+<ul><li>X: W1(X) at 3 → R3(X) at 4 (W–R), R1(X) at 1 → W3(X) at 7 (R–W), W1(X) at 3 → W3(X) at 7 (W–W) ⇒ <b>T1 → T3</b>.</li>
+<li>Y: W2(Y) at 5 → R1(Y) at 6 (W–R) ⇒ <b>T2 → T1</b>. (R2(Y) and R1(Y) are both reads — no conflict.)</li></ul>
+{{pgraph:p26}}
+<h4>(ii) Conflict serializable?</h4>
+<p>Edges T2 → T1 and T1 → T3 only; there is no cycle ⇒ the schedule <b>is conflict serializable</b>.</p>
+<h4>(iii) Equivalent serial schedule</h4>
+<p>Topological sort: T2 has no incoming edge → T2 first; then T1; then T3. Since T2 must precede T1 and T1 must precede T3,
+the order is unique.</p>
+<p class="answer-line">Equivalent serial schedule: T2 → T1 → T3 (only one).</p>
+<h4>(iv) Recoverable, cascadeless, strict?</h4>
+{{recov:p26}}
+<ul><li><b>Recoverable — YES.</b> T1 reads Y from T2 and T2 commits (8) before T1 commits (9); T3 reads X from T1 and T1 commits (9)
+before T3 commits (10). Every reader commits after the writer it read from.</li>
+<li><b>Cascadeless — NO.</b> T3 reads X at step 4 while T1 (writer at step 3) is uncommitted until step 9; likewise T1 reads Y at
+step 6 before T2 commits at 8. If T1 aborted, T3 would have to be rolled back too.</li>
+<li><b>Strict — NO.</b> Strict ⊂ cascadeless, and in addition T3 overwrites X (step 7) while T1, its last writer, is uncommitted.</li></ul>
+</div></details></div>
+
+<div class="pyq">
+<div class="pyq-h"><span class="chip acc">End-Sem (year not printed)</span><span class="chip">Q4(a)</span><span class="chip warn">1 + 3 marks</span></div>
+<div class="pyq-q"><p>(i) What is conflict serializability?<br>(ii) Consider the following schedules (r, w, c denote read, write and commit):<br>
+S1: r1(X); r2(Z); r1(Z); r3(X); r3(Y); w1(X); c1; w3(Y); c3; r2(Y); w2(Z); w2(Y); c2<br>
+S2: r1(X); r2(Z); r1(Z); r3(X); r3(Y); w1(X); w3(Y); r2(Y); w2(Z); w2(Y); c1; c2; c3<br>
+S3: r1(X); r2(Z); r3(X); r1(Z); r2(Y); r3(Y); w1(X); c1; w2(Z); w3(Y); w2(Y); c3; c2<br>
+Using the precedence graph method, analyse the conflict serializability of schedules S1, S2 and S3.</p></div>
+<details><summary>Show answer</summary><div class="ans">
+<h4>(i) Conflict serializability</h4>
+<p>Two operations <b>conflict</b> if they belong to different transactions, access the same data item, and at least one is a
+write. Two schedules are <b>conflict equivalent</b> if one can be obtained from the other by swapping adjacent non-conflicting
+operations (equivalently, all conflicting pairs are in the same order). A schedule is <b>conflict serializable</b> if it is
+conflict equivalent to some serial schedule; it is tested with a precedence graph — acyclic ⇔ conflict serializable.</p>
+<h4>(ii) S1</h4>
+{{sched:pu_s1}}
+{{conf:pu_s1}}
+{{pgraph:pu_s1}}
+{{verdict:pu_s1}}
+<h4>S2</h4>
+<p>S2 has exactly the same read/write operations in the same relative order as S1 — only the commits are moved to the end.
+Commits don’t create conflicts, so the conflicting pairs and edges are identical:</p>
+{{conf:pu_s2}}
+{{pgraph:pu_s2}}
+{{verdict:pu_s2}}
+<h4>S3</h4>
+{{sched:pu_s3}}
+{{conf:pu_s3}}
+{{pgraph:pu_s3}}
+{{verdict:pu_s3}}
+<p>In S3, r<sub>2</sub>(Y) (step 5) precedes w<sub>3</sub>(Y) (step 10) ⇒ T2 → T3, while r<sub>3</sub>(Y) (step 6) and
+w<sub>3</sub>(Y) (step 10) precede w<sub>2</sub>(Y) (step 11) ⇒ T3 → T2.</p>
+<p class="answer-line">S1 and S2 are conflict serializable (equivalent to T3 → T1 → T2); S3 is not (cycle T2 ⇄ T3).</p>
+</div></details></div>
+
+<div class="pyq">
+<div class="pyq-h"><span class="chip acc">End-Sem Nov–Dec 2022</span><span class="chip">Q4(a)</span><span class="chip warn">2 + 2 marks</span></div>
+<div class="pyq-q"><p>Consider the partial schedule S1: R1(X), R2(Y), R3(Y), W2(Y), W1(X), W3(X), R2(X), W2(X).<br>
+(i) Check if S1 is conflict serializable. If it is, write the equivalent serial schedule.<br>
+(ii) Does S1 have cascaded rollbacks? Justify your answer.</p></div>
+<details><summary>Show answer</summary><div class="ans">
+{{sched:p22_s1}}
+<h4>(i)</h4>
+{{conf:p22_s1}}
+{{pgraph:p22_s1}}
+{{verdict:p22_s1}}
+<p class="answer-line">S1 is conflict serializable; equivalent serial schedule: T1 → T3 → T2.</p>
+<h4>(ii) Cascading rollback?</h4>
+{{recov:p22_s1}}
+<p><b>Yes, S1 is prone to cascading rollback.</b> T2 reads X at step 7, and that value was written by T3 at step 6. No
+commit appears in the partial schedule, so T3 is still uncommitted when T2 reads it (a dirty read). If T3 now fails and is
+rolled back, T2 has read an invalid value and must also be rolled back — a cascading rollback. S1 is therefore <b>not
+cascadeless</b>. (T3’s W(X) also overwrites T1’s uncommitted W(X), so S1 is not strict either.) To avoid this, T2 should read
+X only after T3 commits.</p>
+</div></details></div>
+
+<!-- ------------------------------------------------ P4 -->
+<h3 id="p4">14.4 Recoverability</h3>
+
+<div class="pyq">
+<div class="pyq-h"><span class="chip acc">End-Sem Nov–Dec 2023</span><span class="chip">Q4(c)</span><span class="chip warn">4 marks</span></div>
+<div class="pyq-q"><p>What is a recoverable schedule? Why is recoverability of schedules desirable? Is every cascadeless schedule
+recoverable? Explain with an example.</p></div>
+<details><summary>Show answer</summary><div class="ans">
+<p><b>Recoverable schedule:</b> a schedule in which, for every pair of transactions Ti, Tj such that Tj reads a data item
+previously written by Ti, the commit of Ti appears <b>before</b> the commit of Tj.</p>
+<p><b>Why desirable:</b> if a transaction fails, atomicity requires undoing it and every transaction that read its data.
+If such a dependent transaction has already committed, it can’t be undone (durability), and the database stays inconsistent.
+Recoverable schedules guarantee we never have to undo a committed transaction. Example of a <b>non-recoverable</b> schedule:</p>
+{{sched:nonrec}}
+<p>Making T9 wait to commit until after T8 makes it recoverable:</p>
+{{sched:rec}}
+<p><b>Is every cascadeless schedule recoverable? — Yes.</b> In a cascadeless schedule, if Tj reads an item written by Ti,
+then Ti commits <b>before Tj’s read</b>. Tj can commit only after its own read, so: commit(Ti) &lt; read<sub>j</sub> &lt;
+commit(Tj). Hence Ti commits before Tj, which is exactly the recoverability condition. Example:</p>
+{{sched:cascadeless}}
+<p>Here T2 reads A only after T1 commits, and T3 only after T2 commits ⇒ cascadeless, and automatically recoverable
+(T1 commits before T2). The converse is not true: the recoverable schedule above (T9 reads uncommitted A) is not
+cascadeless.</p>
+<p class="answer-line">Strict ⊂ Cascadeless ⊂ Recoverable — every cascadeless schedule is recoverable, but not every recoverable schedule is cascadeless.</p>
+</div></details></div>
+
+<div class="pyq">
+<div class="pyq-h"><span class="chip acc">End-Sem (year not printed)</span><span class="chip">Q4(c)</span><span class="chip warn">4 marks</span></div>
+<div class="pyq-q"><p>Consider the schedules S1 and S2 in Q4(a) [S1: r1(X); r2(Z); r1(Z); r3(X); r3(Y); w1(X); c1; w3(Y); c3; r2(Y); w2(Z);
+w2(Y); c2 &nbsp; S2: r1(X); r2(Z); r1(Z); r3(X); r3(Y); w1(X); w3(Y); r2(Y); w2(Z); w2(Y); c1; c2; c3]. Determine whether each
+schedule is cascadeless and recoverable.</p></div>
+<details><summary>Show answer</summary><div class="ans">
+<p><b>Rules:</b> Recoverable — if Tj reads from Ti, Ti commits before Tj commits. Cascadeless — if Tj reads from Ti, Ti
+commits before Tj’s read.</p>
+<h4>S1</h4>
+{{sched:pu_s1}}
+{{recov:pu_s1}}
+<p>The only read of a value written by another transaction is r<sub>2</sub>(Y) at step 10, which reads Y written by T3
+(w<sub>3</sub>(Y), step 8). T3 committed at step 9, <b>before</b> the read ⇒ <b>cascadeless</b>. Every cascadeless schedule
+is recoverable (c<sub>3</sub> = 9 &lt; c<sub>2</sub> = 13) ⇒ <b>recoverable</b>. (It is even strict.)</p>
+<h4>S2</h4>
+{{sched:pu_s2}}
+{{recov:pu_s2}}
+<p>r<sub>2</sub>(Y) at step 8 reads Y written by T3 at step 7, and T3 is uncommitted (c<sub>3</sub> at step 13) ⇒ dirty read ⇒
+<b>not cascadeless</b>. Moreover T2 commits at step 12 <b>before</b> T3 commits at step 13. If T3 failed after c<sub>2</sub>,
+T2 could not be undone ⇒ <b>not recoverable</b>.</p>
+<p class="answer-line">S1: recoverable and cascadeless. S2: neither recoverable nor cascadeless (it would be recoverable if c3 came before c2).</p>
+</div></details></div>
+
+<div class="box note"><div class="box-t">Also see</div>Recoverability parts of other questions: End-Sem 2026 Q5(c)(iv) and End-Sem 2022
+Q4(a)(ii) are solved in 14.3 above.</div>

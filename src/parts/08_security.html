@@ -1,0 +1,201 @@
+<!-- ============================================================ 12 -->
+<h2 id="s12"><span class="num">12</span>Database Security</h2>
+<p>Recovery protects data against <b>failures</b>; security protects it against <b>people</b> — unauthorised users, malicious
+insiders and attackers. The database often holds the most valuable data of an organisation (bank balances, medical
+records, passwords, exam results), so it is a prime target.</p>
+
+<h3 id="s12-1">12.1 What is database security? Security vs Integrity</h3>
+<div class="box def"><div class="box-t">Definition</div>
+<b>Database security</b> is the set of measures, controls and tools used to protect the database (data, DBMS, applications
+and the system) against <b>unauthorised access, misuse, modification or destruction</b>, whether intentional or accidental.</div>
+<div class="tbl-wrap"><table class="tbl small">
+<tr><th>Basis</th><th>Security of a database</th><th>Integrity of a database</th></tr>
+<tr><td>Meaning</td><td>Protecting data from <b>unauthorised</b> users and actions</td><td>Keeping data <b>correct, valid and consistent</b></td></tr>
+<tr><td>Protects against</td><td>Malicious / unauthorised access (attackers, curious employees)</td><td>Accidental errors by <i>authorised</i> users, invalid data, failures</td></tr>
+<tr><td>Question asked</td><td>“Is this user <b>allowed</b> to do this?”</td><td>“Is this operation / value <b>correct</b>?”</td></tr>
+<tr><td>Mechanisms</td><td>Authentication, authorization (GRANT/REVOKE), views, roles, encryption, auditing</td><td>Integrity constraints (PK, FK, NOT NULL, UNIQUE, CHECK), triggers, ACID transactions, concurrency control</td></tr>
+<tr><td>Example</td><td>A student must not be able to read other students’ marks or change their own grade</td><td>Marks must be between 0 and 100; every enrolment must refer to an existing student</td></tr>
+</table></div>
+<p>The two overlap: integrity is also one of the three goals of security (below) — unauthorised modification destroys integrity.</p>
+
+<h3 id="s12-2">12.2 Goals of security — the CIA triad</h3>
+{{svg:cia}}
+<ul>
+<li><b>Confidentiality (secrecy)</b> — information is not disclosed to unauthorised users. Loss example: leak of customers’ card numbers.</li>
+<li><b>Integrity</b> — information is modified only by authorised users in authorised ways. Loss example: an attacker changes a balance or a grade.</li>
+<li><b>Availability</b> — authorised users can access data whenever they need it. Loss example: a denial-of-service attack or ransomware makes the database unusable.</li>
+</ul>
+<p>Some texts add <b>accountability / non-repudiation</b> (actions can be traced to users — via auditing) and <b>authenticity</b>.</p>
+
+<h3 id="s12-3">12.3 Threats to databases</h3>
+<div class="tbl-wrap"><table class="tbl small">
+<tr><th>Threat</th><th>Description</th></tr>
+<tr><td>Unauthorised access / excessive privileges</td><td>Users get more rights than their job needs, or outsiders get in with stolen credentials</td></tr>
+<tr><td>Privilege abuse by insiders</td><td>Legitimate users misuse their access (e.g. an employee copying customer data)</td></tr>
+<tr><td><b>SQL injection</b></td><td>Attacker inserts SQL code through application inputs (see 12.9)</td></tr>
+<tr><td>Weak authentication</td><td>Default / weak passwords, no MFA, password reuse</td></tr>
+<tr><td>Inference</td><td>Deducing confidential facts from allowed aggregate queries (statistical databases, 12.11)</td></tr>
+<tr><td>Malware / ransomware</td><td>Steals or encrypts data</td></tr>
+<tr><td>Denial of service</td><td>Flooding the server so legitimate users can’t work (attack on availability)</td></tr>
+<tr><td>Exposure of backups / storage media</td><td>Unencrypted backup tapes or disks stolen</td></tr>
+<tr><td>Network eavesdropping</td><td>Data captured in transit if not encrypted</td></tr>
+<tr><td>Physical threats</td><td>Theft of servers, fire, flood (overlaps with recovery)</td></tr>
+</table></div>
+<p><b>Levels at which security is enforced:</b> database system (privileges), operating system, network, physical (data
+centre), and human (training, phishing awareness). A weakness at any level can bypass the others.</p>
+
+<h3 id="s12-4">12.4 Control measures and the role of the DBA</h3>
+<p>Four main kinds of control (Elmasri):</p>
+<ol><li><b>Access control</b> — restrict who can access the system and what they can do (authentication + authorization).</li>
+<li><b>Inference control</b> — prevent deducing individual information from statistical/aggregate queries.</li>
+<li><b>Flow control</b> — prevent information flowing to unauthorised users (e.g. covert channels, MAC rules).</li>
+<li><b>Data encryption</b> — protect sensitive data in storage and transmission.</li></ol>
+{{svg:sec_layers}}
+<p>The <b>Database Administrator (DBA)</b> is the central authority for security. Using a privileged (system/superuser)
+account, the DBA performs:</p>
+<ul><li><b>Account creation</b> — creates user accounts and passwords;</li>
+<li><b>Privilege granting</b> — grants privileges to accounts;</li>
+<li><b>Privilege revocation</b> — takes privileges back;</li>
+<li><b>Security-level assignment</b> — assigns users to clearance levels (for MAC);</li>
+<li>Monitoring the <b>audit trail</b>.</li></ul>
+
+<h3 id="s12-5">12.5 Authentication vs Authorization</h3>
+<div class="grid2">
+<div class="box def"><div class="box-t">Authentication — “Who are you?”</div>
+Verifying the identity of a user before allowing a connection. Methods: passwords (stored as <b>salted hashes</b>, never in
+plain text), multi-factor authentication (password + OTP), biometrics, smart cards, certificates, single sign-on
+(Kerberos/LDAP).</div>
+<div class="box def"><div class="box-t">Authorization — “What may you do?”</div>
+Deciding which data and operations an authenticated user is allowed to access. Implemented by <b>access-control
+models</b>: DAC (GRANT/REVOKE), MAC (security levels), RBAC (roles).</div></div>
+<p>Principle of <b>least privilege</b>: give every user/application only the minimum privileges needed for its job.</p>
+
+<h3 id="s12-6">12.6 Discretionary Access Control (DAC) — GRANT and REVOKE</h3>
+<p>In DAC, the <b>owner</b> of an object (the user who created a table) has all privileges on it and can, at their
+<b>discretion</b>, grant privileges to other users, who may pass them on further.</p>
+<h4>Types of privileges</h4>
+<ul><li><b>Account-level</b> (system) privileges: CREATE TABLE, CREATE VIEW, ALTER, DROP, CREATE USER, SELECT ANY TABLE …</li>
+<li><b>Relation-level</b> (object) privileges on a specific table/view:
+<code>SELECT</code>, <code>INSERT</code>, <code>UPDATE</code> (optionally on specific columns), <code>DELETE</code>,
+<code>REFERENCES</code> (to create foreign keys referring to it), <code>ALL PRIVILEGES</code>.</li></ul>
+<h4>GRANT</h4>
+<pre><code>GRANT privilege_list ON object TO user_list | role | PUBLIC [WITH GRANT OPTION];
+
+GRANT SELECT, INSERT ON Student TO U1;
+GRANT UPDATE (marks) ON Result TO teacher1;        -- column-level
+GRANT SELECT ON Employee TO U2 WITH GRANT OPTION;  -- U2 may grant SELECT to others
+GRANT REFERENCES (dept_id) ON Department TO U3;</code></pre>
+<p><b>WITH GRANT OPTION</b> lets the receiver propagate the privilege. Without it, the receiver can use the privilege but
+not pass it on.</p>
+<h4>REVOKE</h4>
+<pre><code>REVOKE privilege_list ON object FROM user_list [CASCADE | RESTRICT];
+
+REVOKE INSERT ON Student FROM U1;
+REVOKE SELECT ON Employee FROM U2 CASCADE;   -- also revoke from everyone U2 granted it to
+REVOKE SELECT ON Employee FROM U2 RESTRICT;  -- fail if U2 has granted it onwards
+REVOKE GRANT OPTION FOR SELECT ON Employee FROM U2;  -- keep the privilege, remove the right to grant</code></pre>
+<h4>Authorization (grant) graph and cascading revoke</h4>
+{{svg:authgraph}}
+<p>Nodes are users; an edge Ui → Uj means Ui granted the privilege to Uj. A user has the privilege <b>if and only if there is
+a path from the root (DBA / owner) to that user</b>. Revoking with CASCADE removes the edge and then removes the privilege
+from every user who no longer has a path from the root. (A cycle of grants — U7 → U8 → U7 — doesn’t keep a privilege alive
+once the path from the root is gone.)</p>
+
+<h4>Views as a security mechanism</h4>
+<p>A <b>view</b> can hide columns (vertical restriction) or rows (horizontal restriction). Give users privileges on the view, not
+on the base table.</p>
+<pre><code>-- Clerks may see employee names and departments, but not salaries:
+CREATE VIEW EmpPublic AS SELECT emp_id, name, dept FROM Employee;
+GRANT SELECT ON EmpPublic TO clerk;
+
+-- Each IT-department manager sees only IT employees:
+CREATE VIEW IT_Emp AS SELECT * FROM Employee WHERE dept = 'IT';
+GRANT SELECT ON IT_Emp TO it_manager;</code></pre>
+
+<h4>Roles</h4>
+<pre><code>CREATE ROLE faculty;
+GRANT SELECT, UPDATE (marks) ON Result TO faculty;
+GRANT faculty TO prof_sharma, prof_verma;   -- users inherit the role's privileges
+REVOKE faculty FROM prof_verma;</code></pre>
+
+<div class="box warn"><div class="box-t">Weakness of DAC</div>
+Once a user can read data, nothing stops them from copying it into their own table and granting that copy to anyone
+(e.g. via a Trojan-horse program). DAC controls access to <i>objects</i>, not the <i>flow</i> of information. MAC
+addresses this.</div>
+
+<h3 id="s12-7">12.7 Mandatory Access Control (MAC)</h3>
+<p>Used in military, government and high-security systems. Every <b>subject</b> (user/program) gets a <b>clearance</b> and every
+<b>object</b> (table, row, even a column value) gets a <b>classification</b> from an ordered set of security classes:</p>
+<p class="center"><b>Top Secret (TS) &gt; Secret (S) &gt; Confidential (C) &gt; Unclassified (U)</b></p>
+<p>Access is decided by the system’s rules, not by owners. The <b>Bell–LaPadula model</b> has two rules:</p>
+<ol><li><b>Simple security property (no read up):</b> subject S may read object O only if class(S) ≥ class(O).</li>
+<li><b>★-property (star property, no write down):</b> subject S may write object O only if class(S) ≤ class(O). This stops a
+Secret user from copying Secret data into an Unclassified table.</li></ol>
+{{svg:blp}}
+<p><b>Multilevel relations</b> attach a classification to each attribute value/tuple; users with different clearances see
+different versions of the same table. <b>Polyinstantiation</b> = several tuples with the same key but different
+classifications, so a low-level user isn’t tipped off that hidden data exists. <span class="beyond-tag">beyond</span></p>
+<div class="tbl-wrap"><table class="tbl small">
+<tr><th>Basis</th><th>DAC</th><th>MAC</th></tr>
+<tr><td>Who decides access</td><td>Owner of the object (at their discretion)</td><td>System, based on security labels</td></tr>
+<tr><td>Mechanism</td><td>GRANT / REVOKE privileges</td><td>Clearances &amp; classifications, Bell–LaPadula rules</td></tr>
+<tr><td>Flexibility</td><td>High</td><td>Rigid</td></tr>
+<tr><td>Information-flow control</td><td>No (copies can leak)</td><td>Yes (no write down)</td></tr>
+<tr><td>Used in</td><td>Most commercial DBMS</td><td>Military / government systems</td></tr>
+</table></div>
+
+<h3 id="s12-8">12.8 Role-Based Access Control (RBAC)</h3>
+<p>Privileges are assigned to <b>roles</b> (job functions: <i>student, faculty, accountant, DBA</i>) and users are assigned to
+roles. When a person changes job, only their role membership changes. Supports <b>least privilege</b> and <b>separation of
+duties</b> (e.g. the person who creates a payment cannot also approve it). RBAC can model both DAC-like and MAC-like
+policies; SQL supports it with <code>CREATE ROLE</code> / <code>GRANT role TO user</code>.</p>
+
+<h3 id="s12-9">12.9 SQL injection</h3>
+<div class="box def"><div class="box-t">Definition</div>
+<b>SQL injection</b> is an attack in which a user supplies input that is concatenated into an SQL statement, so that the input
+<b>changes the meaning of the query</b>. It can bypass login, read other users’ data, modify or delete tables.</div>
+<div class="box ex"><div class="box-t">Example</div>
+<p>Application code builds the query by string concatenation:</p>
+<pre><code>query = "SELECT * FROM users WHERE name = '" + uname + "' AND pwd = '" + pwd + "'";</code></pre>
+<p>Attacker types username <code>admin' --</code> (or password <code>' OR '1'='1</code>). The query becomes:</p>
+<pre><code>SELECT * FROM users WHERE name = 'admin' --' AND pwd = '...'      -- rest is a comment
+SELECT * FROM users WHERE name = 'x' AND pwd = '' OR '1'='1'        -- always true</code></pre>
+<p>The attacker logs in without a password. Input like <code>'; DROP TABLE users; --</code> could destroy data.</p></div>
+<p><b>Prevention:</b></p>
+<ul><li><b>Prepared statements / parameterised queries</b> (the main defence): the query structure is fixed and inputs are passed
+as data, never as SQL. <code>SELECT * FROM users WHERE name = ? AND pwd = ?</code></li>
+<li>Input validation and escaping of special characters; stored procedures with parameters.</li>
+<li><b>Least privilege</b> for the application’s DB account (it should not be able to DROP tables).</li>
+<li>Don’t show raw DB error messages to users; use web-application firewalls; audit and test.</li></ul>
+
+<h3 id="s12-10">12.10 Encryption</h3>
+<ul><li><b>Encryption</b> converts plaintext into ciphertext using a key, so stolen data is useless without the key.</li>
+<li><b>At rest</b>: encrypting database files/backups (Transparent Data Encryption — TDE), or individual sensitive columns (card
+numbers, Aadhaar).</li>
+<li><b>In transit</b>: SSL/TLS between client and server.</li>
+<li><b>Symmetric</b> (same key, e.g. AES — fast, for bulk data) vs <b>asymmetric / public-key</b> (public + private key, e.g.
+RSA — for key exchange and <b>digital signatures</b>).</li>
+<li><b>Hashing</b> (one-way, e.g. SHA-256/bcrypt with a salt) for storing passwords: the system compares hashes and never stores the password itself.</li>
+<li>Key management is critical — keys must be stored separately from the data.</li></ul>
+
+<h3 id="s12-11">12.11 Auditing, and statistical database security</h3>
+<p><b>Audit trail:</b> the DBMS logs who accessed what, when and from where (logins, queries on sensitive tables, privilege
+changes). If tampering is suspected, the audit trail is examined to find the responsible user. It also deters misuse
+(accountability). The audit log is like the recovery log but focused on users, not values.</p>
+<p><b>Statistical databases</b> allow only aggregate queries (COUNT, AVG …) e.g. census data. Attackers may <b>infer</b>
+individual values by combining queries: “average salary of female professors in dept X” when there is only one such
+person reveals her salary. <b>Inference controls:</b> refuse queries whose result set is smaller than a threshold (minimum
+query-set size), prevent queries with large overlap, add random <b>noise</b> to results, data swapping/partitioning.</p>
+
+<h3 id="s12-12">12.12 Other important practices</h3>
+<ul><li><b>Row-level security / Virtual Private Database</b>: the DBMS automatically adds a predicate so each user sees only their rows.</li>
+<li><b>Backups and recovery</b> (availability) — encrypted and stored off-site.</li>
+<li><b>Patching</b> the DBMS and OS; disabling default accounts; firewalls allowing DB access only from application servers.</li>
+<li><b>Data masking</b> for test/development copies.</li>
+<li>Compliance with laws such as India’s Digital Personal Data Protection Act 2023, GDPR, HIPAA.</li></ul>
+
+<div class="box exam"><div class="box-t">Exam tip</div>
+For “Explain database security / access control”, structure the answer as: definition → CIA triad (diagram) → threats →
+control measures (access, inference, flow, encryption) → DAC with GRANT/REVOKE syntax + grant graph → MAC (Bell–LaPadula
+diagram) → RBAC → SQL injection example. For “GRANT and REVOKE”, write the syntax, one example each, WITH GRANT OPTION and
+CASCADE/RESTRICT.</div>

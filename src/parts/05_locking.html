@@ -1,0 +1,235 @@
+<!-- ============================================================ 8 -->
+<h2 id="s8"><span class="num">8</span>Concurrency Control — Lock-Based Protocols</h2>
+
+<h3 id="s8-1">8.1 What is a concurrency-control protocol?</h3>
+<div class="box def"><div class="box-t">Definition</div>
+Concurrency-control protocols <b>manage the sequence of read and write operations</b> of concurrent transactions so that
+the resulting schedules are <b>serializable</b> (and preferably recoverable / cascadeless), i.e. the concurrent schedule
+has no inconsistencies. The DBMS component that does this is the <b>concurrency-control manager</b> (scheduler).</div>
+<p>Families of protocols:</p>
+<ul>
+<li><b>Lock-based protocols</b> — 2PL, strict 2PL, rigorous 2PL, conservative 2PL <i>(syllabus)</i>; graph/tree protocol.</li>
+<li><b>Timestamp-based protocols</b> — timestamp ordering, Thomas’ write rule <i>(Section 10)</i>.</li>
+<li><b>Validation-based (optimistic)</b> protocols, <b>multiversion</b> schemes <i>(Section 10)</i>.</li>
+</ul>
+
+<h3 id="s8-2">8.2 Locks: Shared and Exclusive</h3>
+<div class="box def"><div class="box-t">Definition — Lock</div>
+A <b>lock</b> is a variable associated with a data item that controls access to it. In a <b>lock-based protocol</b>, a
+transaction <b>cannot read or write a data item until it acquires an appropriate lock</b> on it. (“If I have locked A,
+no one else can use it in a conflicting way.”)</div>
+<p>Two lock modes:</p>
+<ol>
+<li><b>Shared lock (S)</b> — <code>lock-S(Q)</code> / read-lock. A transaction holding S on Q can <b>only read</b> Q, not write
+it. Many transactions can hold S on the same item at the same time.</li>
+<li><b>Exclusive lock (X)</b> — <code>lock-X(Q)</code> / write-lock. A transaction holding X on Q can <b>both read and
+write</b> Q. No other transaction can hold any lock on Q at the same time.</li>
+</ol>
+<p><code>unlock(Q)</code> releases the lock.</p>
+
+<h4>Lock compatibility matrix</h4>
+<div class="tbl-wrap" style="max-width:520px;margin:auto"><table class="tbl center">
+<tr><th>Lock held by another txn → <br>Lock requested ↓</th><th>S</th><th>X</th></tr>
+<tr><th>S</th><td class="y">True (compatible)</td><td class="n">False</td></tr>
+<tr><th>X</th><td class="n">False</td><td class="n">False</td></tr>
+</table></div>
+<p>A lock is granted only if it is compatible with all locks <b>already held by other transactions</b> on that item;
+otherwise the requester <b>waits</b>. Only S–S is compatible: if a transaction holds an exclusive lock, no lock of any kind
+can be granted to others.</p>
+{{svg:lockmgr}}
+
+<div class="box beyond"><div class="box-t">Lock conversion &amp; automatic locks</div>
+<ul><li><b>Upgrade</b> (S → X): a transaction that has read Q and now wants to write it converts its lock. Allowed only in
+the <b>growing phase</b> of 2PL.</li>
+<li><b>Downgrade</b> (X → S): allowed only in the <b>shrinking phase</b>.</li>
+<li>In real systems the programmer doesn’t write lock instructions; the DBMS issues them automatically: on read(Q) it gets
+lock-S(Q), on write(Q) it gets lock-X(Q) (or upgrades), and it releases all locks at commit/abort.</li></ul></div>
+
+<h3 id="s8-3">8.3 Simplistic locking, and why it is not enough</h3>
+<p><b>Simplistic lock protocol</b> (class): a transaction locks every data item before operating on it and may unlock it
+right after finishing the operation (e.g. after the write). Locks alone do <b>not</b> guarantee serializability, because
+nothing says <i>when</i> a transaction may unlock:</p>
+<div class="box ex"><div class="box-t">Example — unlocking too early gives a wrong answer</div>
+{{sched:lockbad}}
+<p>Every access was properly locked, yet T2 displays 250 instead of 300, because T1 unlocked B <b>before</b> it locked A
+and T2 slipped in between. We need rules about when locks may be released → <b>locking protocols</b> (2PL).</p></div>
+<p>There is a trade-off: keeping items locked for very long makes everyone else wait; unlocking too early allows
+inconsistency. Two more dangers of locking are deadlock and starvation.</p>
+
+<h3 id="s8-4">8.4 Pitfalls of locking: Deadlock and Starvation</h3>
+<h4>Deadlock</h4>
+<div class="box def"><div class="box-t">Definition</div>
+A <b>deadlock</b> is a situation in which two or more transactions are each <b>waiting indefinitely</b> for a lock held by
+another transaction in the set, so <b>none of them can continue</b> its normal execution.</div>
+{{sched:deadlock1}}
+<p>T2 waits for T1 (to release A) and T1 waits for T2 (to release B): neither can ever proceed. The only solution is to
+<b>roll back</b> one (or both) of the transactions so that its locks are released. Rollback or deadlock is still
+preferred over inconsistency. Details in Section 9.</p>
+
+<h4>Starvation</h4>
+<div class="box def"><div class="box-t">Definition</div>
+<b>Starvation</b> occurs when a transaction has to <b>wait for an indefinite period</b> to acquire a lock (or keeps being
+rolled back), even though the rest of the system keeps making progress. Its execution is delayed, but it is not
+impossible.</div>
+{{sched:starve}}
+<p>T2 wants an X-lock on A, but a stream of transactions keeps getting S-locks (each compatible with the one before),
+so A is never free for T2.</p>
+<p><b>Solution:</b> grant locks on a <b>first-come-first-served</b> basis: a lock request should not be granted if an
+<i>earlier</i> request for the same item is still waiting in an incompatible mode. When T3 asks for S(A), T2 is already
+waiting, so T3 must queue behind T2. (“Jisne pehle maanga, usse pehle milna chahiye.”) For deadlock victims, count how many
+times a transaction has been rolled back and stop picking it.</p>
+
+<div class="tbl-wrap"><table class="tbl small">
+<tr><th>Basis</th><th>Deadlock</th><th>Starvation</th></tr>
+<tr><td>Meaning</td><td>Set of transactions waiting for each other in a cycle</td><td>One transaction waits indefinitely while others proceed</td></tr>
+<tr><td>Progress</td><td>Nobody in the set can move — further execution impossible</td><td>System keeps running; only the starved transaction is delayed</td></tr>
+<tr><td>Can it finish?</td><td>Never, unless the DBMS intervenes (rollback)</td><td>Possibly, after some unpredictable time</td></tr>
+<tr><td>Cause</td><td>Circular wait for locks</td><td>Unfair lock granting / repeated victim selection / priorities</td></tr>
+<tr><td>Detection</td><td>Cycle in the wait-for graph</td><td>No graph test; monitor waiting time</td></tr>
+<tr><td>Fix</td><td>Prevention (ordering, wait-die, wound-wait, conservative 2PL) or detection + rollback</td><td>FCFS lock queues, aging, limit on rollbacks</td></tr>
+</table></div>
+
+<h3 id="s8-5">8.5 Two-Phase Locking (2PL)</h3>
+<div class="box def"><div class="box-t">Definition — Basic 2PL</div>
+A transaction follows the <b>two-phase locking protocol</b> if it issues its lock and unlock requests in two phases:
+<ol><li><b>Growing phase</b> — the transaction may <b>obtain</b> locks (and upgrade S → X) but may <b>not release</b> any lock.</li>
+<li><b>Shrinking phase</b> — the transaction may <b>release</b> locks (and downgrade X → S) but may <b>not obtain</b> any new lock.</li></ol>
+<p><b>Principle:</b> once a transaction has released (unlocked) any lock, it can never acquire another lock.
+All lock requests precede the first unlock.</p></div>
+{{svg:twopl}}
+<div class="box def"><div class="box-t">Lock point</div>
+The <b>lock point</b> of a transaction is the point at which it acquires its <b>final lock</b> (end of the growing phase).
+Right after it, the first release / downgrade can happen. Transactions in a 2PL schedule can be serialized in the
+<b>order of their lock points</b>.</div>
+<div class="box note"><div class="box-t">Source note</div>The class notes define the lock point as “the first instance when a
+transaction releases or degrades a lock”. That is the boundary seen from the other side: the lock point is the
+<i>last acquire</i>, and the first release follows it. Either way it marks the switch from growing to shrinking.</div>
+
+<div class="box ex"><div class="box-t">Example (class) — both transactions are 2PL</div>
+{{sched:twopl}}
+<p>T1 obtains S(A) and X(B) and only then releases A ⇒ two-phase. T2 obtains S(B) and X(A) and only then releases ⇒
+two-phase. We check 2PL <b>transaction-wise</b> (each transaction individually must be two-phase), not data-item-wise.</p></div>
+
+<h4>Why 2PL guarantees conflict serializability (proof — asked in 2025 PYQ)</h4>
+<div class="box key"><div class="box-t">Theorem: every schedule produced by 2PL is conflict serializable</div>
+<p><b>Step 1 — an edge means an unlock before a lock.</b> Suppose the precedence graph has an edge Ti → Tj. Then Ti performed
+an operation on some item Q, and later Tj performed a conflicting operation on Q (at least one is a write). The two
+locks needed (S/X or X/S or X/X) are <b>incompatible</b>, so Tj could get its lock on Q only <b>after Ti unlocked Q</b>:
+&nbsp; <code>unlock<sub>i</sub>(Q) &lt; lock<sub>j</sub>(Q)</code>.</p>
+<p><b>Step 2 — assume a cycle.</b> Suppose, for contradiction, all transactions obey 2PL and the graph has a cycle
+T1 → T2 → … → Tn → T1. Using step 1 for each edge, and the 2PL rule inside each transaction (every lock comes before every
+unlock):</p>
+<p class="center"><code>unlock<sub>1</sub>(Q<sub>1</sub>) &lt; lock<sub>2</sub>(Q<sub>1</sub>) &lt; unlock<sub>2</sub>(Q<sub>2</sub>) &lt;
+lock<sub>3</sub>(Q<sub>2</sub>) &lt; … &lt; unlock<sub>n</sub>(Q<sub>n</sub>) &lt; lock<sub>1</sub>(Q<sub>n</sub>)</code></p>
+<p>So T1 acquires a lock on Q<sub>n</sub> <b>after</b> it has released the lock on Q<sub>1</sub> — T1 is <b>not</b> two-phase.
+Contradiction. Hence, if the graph has a cycle, at least one transaction violates 2PL; equivalently, if all follow 2PL,
+the graph is acyclic and the schedule is conflict serializable. ∎</p>
+<p><b>Alternative form:</b> step 1 gives LP(Ti) &lt; unlock<sub>i</sub>(Q) &lt; lock<sub>j</sub>(Q) ≤ LP(Tj), so every edge goes from a
+smaller lock point to a larger one. A cycle would need LP(T1) &lt; LP(T1) — impossible. So the equivalent serial order is the
+order of lock points.</p></div>
+
+<h4>Properties / drawbacks of basic 2PL</h4>
+<ul>
+<li>✔ Ensures <b>conflict serializability</b>.</li>
+<li>✘ Does <b>not</b> ensure freedom from <b>deadlock</b> (see 8.10 example).</li>
+<li>✘ Does <b>not</b> prevent <b>cascading rollbacks</b>, and can even produce <b>non-recoverable</b> schedules, because a
+transaction can unlock an item it wrote before it commits:</li>
+</ul>
+{{sched:twopl_nonrec}}
+<p>So basic 2PL solves the consistency problem of concurrency control but not the recovery problems. The variants below fix that.</p>
+
+<h3 id="s8-6">8.6 Strict 2PL</h3>
+<div class="box def"><div class="box-t">Definition</div>
+Everything is the same as basic 2PL, plus: <b>all exclusive (X) locks must be held by a transaction until it commits or
+aborts</b>. Shared (S) locks may be released earlier (in the shrinking phase).</div>
+{{sched:strict}}
+<div class="box note"><div class="box-t">Correction</div>In the class notes, T1’s lock released after commit is written as
+<code>unlock(A)</code>. T1 had already released A; the lock it must hold till commit is its <b>X-lock on B</b>, so it should
+read <code>unlock(B)</code>. Also, T2 must take <code>lock-S(B)</code> <i>before</i> releasing A, or T2 would violate 2PL.</div>
+<ul>
+<li>✔ Conflict serializable (it is a special case of 2PL).</li>
+<li>✔ <b>No transaction can read or overwrite an uncommitted value</b> ⇒ schedules are <b>strict</b>, hence
+<b>cascadeless and recoverable</b>. This was exactly the solution we wanted for cascading rollbacks.</li>
+<li>✘ <b>Deadlock is still possible:</b></li>
+</ul>
+{{sched:strictdead}}
+
+<h3 id="s8-7">8.7 Rigorous 2PL</h3>
+<div class="box def"><div class="box-t">Definition</div>
+<b>All locks — both shared and exclusive — must be held until the transaction commits or aborts.</b> It is a stricter
+version of strict 2PL.</div>
+{{sched:rigorous}}
+<ul>
+<li>✔ Conflict serializable, strict, cascadeless, recoverable.</li>
+<li>✔ Transactions are serialized in the <b>order in which they commit</b> (whoever commits/unlocks first comes first), which
+makes it easy to reason about (and to use with replication).</li>
+<li>✘ Deadlock is still possible (the strict 2PL deadlock example is also rigorous).</li>
+<li>✘ Lowest concurrency of the three: even read locks are held to the end.</li>
+<li>Most commercial DBMSs actually implement strict or rigorous 2PL.</li>
+</ul>
+
+<h3 id="s8-8">8.8 Conservative (Static) 2PL</h3>
+<div class="box def"><div class="box-t">Definition</div>
+A transaction must <b>acquire all the locks it needs before it starts executing</b>, by predeclaring its read-set and
+write-set. If any of the needed locks is unavailable, it acquires <b>none</b> of them and waits, then tries again.</div>
+{{sched:conservative}}
+<ul>
+<li>✔ <b>Deadlock-free</b>: a transaction never holds some locks while waiting for others (no “hold and wait”), so no
+circular wait can form. In the class example, T1 holding X(A) and waiting for X(B) while T2 holds X(B) and waits for
+X(A) simply cannot happen.</li>
+<li>✔ Locks can be released as soon as the transaction finishes using them (no forced delay until commit as in
+rigorous 2PL).</li>
+<li>✘ Needs <b>advance knowledge</b> of every item the transaction will access (hard with conditional logic/queries);
+otherwise it must lock more than needed → <b>wastage of resources</b>, low concurrency.</li>
+<li>It is called <b>static</b> 2PL because the lock set is fixed (declared) before execution, unlike basic 2PL where locks are requested dynamically as the transaction runs.</li>
+<li><b>No partial lock acquisition:</b> suppose T1 holds X(A), X(B) and T2 needs X(B), X(C). Even though C is free, T2 does <b>not</b> lock C while it waits for B — it takes both together once B is released. So T2 never blocks anyone else while waiting.</li>
+<li>✘ Can still cause <b>starvation</b> (a transaction needing many popular items may never get all at once).</li>
+<li>✘ Not necessarily strict ⇒ cascading rollbacks possible unless combined with strict/rigorous; the serialization order is
+also less predictable than in rigorous 2PL.</li>
+</ul>
+
+<h3 id="s8-9">8.9 Comparing the 2PL family</h3>
+{{svg:twopl_variants}}
+{{svg:hierarchy2pl}}
+<p>Being rigorous ⇒ strict ⇒ basic 2PL. Being conservative does <b>not</b> imply strict or rigorous (and vice-versa).</p>
+<div class="tbl-wrap"><table class="tbl small">
+<tr><th>Aspect</th><th>Basic 2PL</th><th>Strict 2PL</th><th>Rigorous 2PL</th><th>Conservative 2PL</th></tr>
+<tr><td><b>Lock acquisition</b></td><td>Gradually, during growing phase</td><td>Gradually</td><td>Gradually</td><td>All at once, before execution starts (predeclared)</td></tr>
+<tr><td><b>Lock release</b></td><td>Any time after lock point</td><td>S: after lock point; X: only after commit/abort</td><td>All only after commit/abort</td><td>After use (lock point is at the start)</td></tr>
+<tr><td><b>Conflict serializable</b></td><td class="y">Yes</td><td class="y">Yes</td><td class="y">Yes</td><td class="y">Yes</td></tr>
+<tr><td><b>Serialization order</b></td><td>Order of lock points</td><td>Order of lock points</td><td>Order of commits</td><td>Order of lock points (start times)</td></tr>
+<tr><td><b>Deadlock possible?</b></td><td class="n">Yes</td><td class="n">Yes</td><td class="n">Yes</td><td class="y">No (deadlock-free)</td></tr>
+<tr><td><b>Recoverable?</b></td><td class="n">Not guaranteed</td><td class="y">Yes (strict schedules)</td><td class="y">Yes</td><td class="n">Not guaranteed (unless also strict)</td></tr>
+<tr><td><b>Cascading rollback?</b></td><td class="n">Possible</td><td class="y">Avoided</td><td class="y">Avoided</td><td class="n">Possible (unless also strict)</td></tr>
+<tr><td><b>Starvation?</b></td><td>Possible</td><td>Possible</td><td>Possible</td><td>Possible</td></tr>
+<tr><td><b>Concurrency</b></td><td>Highest of the four</td><td>Less (X held to end)</td><td>Least (all held to end)</td><td>Low (locks held from the very start, even before use)</td></tr>
+<tr><td><b>Practical issue</b></td><td>Dirty reads, cascades</td><td>Deadlocks</td><td>Deadlocks, less concurrency</td><td>Must know data needs in advance</td></tr>
+</table></div>
+
+<h3 id="s8-10">8.10 Worked exercise — adding lock instructions (class, 12/11)</h3>
+<div class="box ex"><div class="box-t">Question</div>
+<p>T1: read(A), write(A), read(B), write(B) &nbsp;&nbsp; T2: read(B), write(B), read(A), write(A)<br>
+(i) Add suitable lock operations so that they follow 2PL. (ii) Add locks such that there is a deadlock.</p>
+<p><b>(i)</b> Each transaction takes all its locks before its first unlock (shown as a serial schedule; no interleaving needed):</p>
+<div class="tbl-wrap" style="max-width:640px;margin:auto"><table class="tbl small"><tr><th>T1</th><th>T2</th></tr>
+<tr><td><code>lock-X(A)<br>read(A)<br>write(A)<br>lock-X(B)<br>read(B)<br>write(B)<br>unlock(A)<br>unlock(B)</code></td>
+<td><code>lock-X(B)<br>read(B)<br>write(B)<br>lock-X(A)<br>read(A)<br>write(A)<br>unlock(B)<br>unlock(A)</code></td></tr></table></div>
+<p><b>(ii)</b> Interleave them so each grabs its first item and then asks for the other’s:</p>
+{{sched:lockq_dead}}
+<p>Even though both transactions are perfectly two-phase, they deadlock ⇒ <b>2PL does not prevent deadlock</b>.</p></div>
+
+<div class="box ex"><div class="box-t">Worked exercise (class) — the A/B conditional transactions</div>
+<p>T1: read(A); read(B); if A = 0 then B := B + 1; write(B)<br>T2: read(B); read(A); if B = 0 then A := A + 1; write(A)</p>
+<p>Lock/unlock instructions following 2PL:</p>
+<div class="tbl-wrap" style="max-width:640px;margin:auto"><table class="tbl small"><tr><th>T1</th><th>T2</th></tr>
+<tr><td><code>lock-S(A)<br>read(A)<br>lock-X(B)<br>read(B)<br>if A = 0 then B := B + 1<br>write(B)<br>unlock(A)<br>unlock(B)</code></td>
+<td><code>lock-S(B)<br>read(B)<br>lock-X(A)<br>read(A)<br>if B = 0 then A := A + 1<br>write(A)<br>unlock(B)<br>unlock(A)</code></td></tr></table></div>
+<p><b>Can they deadlock? Yes:</b> T1: lock-S(A), read(A); T2: lock-S(B), read(B); T1: lock-X(B) → waits for T2;
+T2: lock-X(A) → waits for T1 ⇒ deadlock.</p></div>
+
+<div class="box exam"><div class="box-t">Exam tip — writing 2PL answers</div>
+<ul><li>Always draw the growing/shrinking graph with the lock point marked.</li>
+<li>When asked to “add lock and unlock instructions”, put <b>every lock before the first unlock</b> in each transaction,
+use lock-S for items only read and lock-X for items written (or lock-S then upgrade).</li>
+<li>To show a deadlock, interleave so that each transaction holds one item and requests the other’s.</li>
+<li>For “compare the variants”, reproduce the 8.9 table with a small schedule for each.</li></ul></div>
