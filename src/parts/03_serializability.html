@@ -210,7 +210,7 @@ things); condition 3 ensures the database ends in the same state.</p>
 <div class="side">{{sched:vi1}}{{sched:vi2}}</div>
 <p>In S1, T1 reads the <b>initial</b> value of A. In S2, T1 reads the value <b>written by T2</b>. So S1 and S2 are
 <b>not</b> view equivalent.</p>
-<div class="box note"><div class="box-t">Correction (PDF p. 119)</div>The PDF shows exactly these two schedules and says they
+<div class="box note"><div class="box-t">Correction (notebook p. 119, PDF pp. 118 &amp; 131)</div>The PDF shows exactly these two schedules and says they
 <b>are</b> view equivalent “because the initial read is done by T1 in both”. That is wrong: in S2, T2 writes A
 <i>before</i> T1 reads it, so T1’s read is no longer an initial read. A correct pair for condition 1 would have T1’s
 read before any write of A in both schedules.</div></div>
@@ -222,7 +222,7 @@ read before any write of A in both schedules.</div></div>
 <div class="box ex"><div class="box-t">Condition 3 — Final write</div>
 <div class="side">{{sched:vf1}}{{sched:vf2}}</div>
 <p>The final write of A is done by T3 in both ⇒ condition 3 is satisfied.</p>
-<div class="box note"><div class="box-t">Clarification (PDF p. 120)</div>The PDF concludes these are “view equal because the final write
+<div class="box note"><div class="box-t">Clarification (notebook p. 120, PDF pp. 119 &amp; 132)</div>The PDF concludes these are “view equal because the final write
 is by T3 in both”. Condition 3 is indeed satisfied, but to be view equivalent <b>all three</b> conditions must hold.
 Here condition 2 fails: in S1, T2 reads A written by T1; in S2, T2 reads the initial A. So, overall, S1 and S2 are
 <b>not</b> view equivalent. Use this pair only to illustrate condition 3.</div></div>
